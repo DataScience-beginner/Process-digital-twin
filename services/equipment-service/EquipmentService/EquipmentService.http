@@ -1,0 +1,6 @@
+@EquipmentService_HostAddress = http://localhost:5040
+
+GET {{EquipmentService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
