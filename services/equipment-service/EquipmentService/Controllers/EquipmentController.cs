@@ -1,69 +1,44 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using EquipmentService.Models;
+using EquipmentService.Data;
 
 namespace EquipmentService.Controllers
 {
     /// <summary>
-    /// API controller for managing equipment
+    /// API controller for managing equipment with PostgreSQL database
     /// </summary>
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/equipment")]
     public class EquipmentController : ControllerBase
     {
-        // In-memory storage (temporary - will use database later)
-        private static List<Equipment> _equipment = new()
-        {
-            new Equipment 
-            { 
-                Id = 1, 
-                TagNumber = "P-101", 
-                Name = "Crude Feed Pump",
-                Type = "Centrifugal Pump",
-                Status = "Operating",
-                Capacity = 500,
-                Unit = "m³/h",
-                InstallDate = new DateTime(2020, 1, 15)
-            },
-            new Equipment 
-            { 
-                Id = 2, 
-                TagNumber = "E-201", 
-                Name = "Crude Preheat Exchanger",
-                Type = "Shell & Tube Heat Exchanger",
-                Status = "Operating",
-                Capacity = 50,
-                Unit = "MW",
-                InstallDate = new DateTime(2019, 6, 20)
-            },
-            new Equipment 
-            { 
-                Id = 3, 
-                TagNumber = "T-301", 
-                Name = "Distillation Column",
-                Type = "Fractionation Tower",
-                Status = "Operating",
-                Capacity = 100000,
-                Unit = "bbl/day",
-                InstallDate = new DateTime(2018, 3, 10)
-            }
-        };
+        private readonly EquipmentDbContext _context;
+        private readonly ILogger<EquipmentController> _logger;
 
-        /// <summary>
-        /// Get all equipment
-        /// </summary>
-        [HttpGet]
-        public ActionResult<IEnumerable<Equipment>> GetAll()
+        // Constructor - Dependency Injection provides DbContext
+        public EquipmentController(EquipmentDbContext context, ILogger<EquipmentController> logger)
         {
-            return Ok(_equipment);
+            _context = context;
+            _logger = logger;
         }
 
         /// <summary>
-        /// Get equipment by ID
+        /// GET /api/equipment - Get all equipment
+        /// </summary>
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Equipment>>> GetAll()
+        {
+            var equipment = await _context.Equipment.ToListAsync();
+            return Ok(equipment);
+        }
+
+        /// <summary>
+        /// GET /api/equipment/{id} - Get equipment by ID
         /// </summary>
         [HttpGet("{id}")]
-        public ActionResult<Equipment> GetById(int id)
+        public async Task<ActionResult<Equipment>> GetById(int id)
         {
-            var equipment = _equipment.FirstOrDefault(e => e.Id == id);
+            var equipment = await _context.Equipment.FindAsync(id);
             
             if (equipment == null)
                 return NotFound(new { message = $"Equipment with ID {id} not found" });
@@ -72,31 +47,31 @@ namespace EquipmentService.Controllers
         }
 
         /// <summary>
-        /// Create new equipment
+        /// POST /api/equipment - Create new equipment
         /// </summary>
         [HttpPost]
-        public ActionResult<Equipment> Create(Equipment equipment)
+        public async Task<ActionResult<Equipment>> Create(Equipment equipment)
         {
-            // Generate new ID
-            equipment.Id = _equipment.Any() ? _equipment.Max(e => e.Id) + 1 : 1;
             equipment.CreatedAt = DateTime.UtcNow;
             
-            _equipment.Add(equipment);
+            _context.Equipment.Add(equipment);
+            await _context.SaveChangesAsync();
             
-            return CreatedAtAction(
-                nameof(GetById), 
-                new { id = equipment.Id }, 
-                equipment
-            );
+            _logger.LogInformation("Created new equipment: {TagNumber}", equipment.TagNumber);
+            
+            return CreatedAtAction(nameof(GetById), new { id = equipment.Id }, equipment);
         }
 
         /// <summary>
-        /// Update existing equipment
+        /// PUT /api/equipment/{id} - Update existing equipment
         /// </summary>
         [HttpPut("{id}")]
-        public ActionResult Update(int id, Equipment equipment)
+        public async Task<ActionResult> Update(int id, Equipment equipment)
         {
-            var existing = _equipment.FirstOrDefault(e => e.Id == id);
+            if (id != equipment.Id)
+                return BadRequest(new { message = "ID mismatch" });
+
+            var existing = await _context.Equipment.FindAsync(id);
             
             if (existing == null)
                 return NotFound(new { message = $"Equipment with ID {id} not found" });
@@ -111,42 +86,66 @@ namespace EquipmentService.Controllers
             existing.InstallDate = equipment.InstallDate;
             existing.UpdatedAt = DateTime.UtcNow;
 
+            await _context.SaveChangesAsync();
+            
+            _logger.LogInformation("Updated equipment: {TagNumber}", equipment.TagNumber);
+
             return Ok(existing);
         }
 
         /// <summary>
-        /// Delete equipment
+        /// DELETE /api/equipment/{id} - Delete equipment
         /// </summary>
         [HttpDelete("{id}")]
-        public ActionResult Delete(int id)
+        public async Task<ActionResult> Delete(int id)
         {
-            var equipment = _equipment.FirstOrDefault(e => e.Id == id);
+            var equipment = await _context.Equipment.FindAsync(id);
             
             if (equipment == null)
                 return NotFound(new { message = $"Equipment with ID {id} not found" });
 
-            _equipment.Remove(equipment);
+            _context.Equipment.Remove(equipment);
+            await _context.SaveChangesAsync();
+            
+            _logger.LogInformation("Deleted equipment: {TagNumber}", equipment.TagNumber);
             
             return NoContent();
         }
 
         /// <summary>
-        /// Get equipment statistics
+        /// GET /api/equipment/stats - Get equipment statistics
         /// </summary>
         [HttpGet("stats")]
-        public ActionResult<object> GetStats()
+        public async Task<ActionResult<object>> GetStats()
         {
             var stats = new
             {
-                totalCount = _equipment.Count,
-                operatingCount = _equipment.Count(e => e.Status == "Operating"),
-                maintenanceCount = _equipment.Count(e => e.Status == "Maintenance"),
-                equipmentTypes = _equipment.GroupBy(e => e.Type)
+                totalCount = await _context.Equipment.CountAsync(),
+                operatingCount = await _context.Equipment.CountAsync(e => e.Status == "Operating"),
+                maintenanceCount = await _context.Equipment.CountAsync(e => e.Status == "Maintenance"),
+                equipmentTypes = await _context.Equipment
+                    .GroupBy(e => e.Type)
                     .Select(g => new { type = g.Key, count = g.Count() })
-                    .ToList()
+                    .ToListAsync()
             };
             
             return Ok(stats);
+        }
+
+        /// <summary>
+        /// GET /api/equipment/search?query=... - Search equipment
+        /// </summary>
+        [HttpGet("search")]
+        public async Task<ActionResult<IEnumerable<Equipment>>> Search([FromQuery] string query)
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return BadRequest(new { message = "Search query is required" });
+
+            var equipment = await _context.Equipment
+                .Where(e => e.TagNumber.Contains(query) || e.Name.Contains(query))
+                .ToListAsync();
+
+            return Ok(equipment);
         }
     }
 }
