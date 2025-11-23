@@ -1,0 +1,43 @@
+# Equipment API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: equipment-api
+  namespace: digital-twin
+spec:
+  replicas: 2  # 2 copies for high availability!
+  selector:
+    matchLabels:
+      app: equipment-api
+  template:
+    metadata:
+      labels:
+        app: equipment-api
+    spec:
+      containers:
+      - name: api
+        image: equipment-service:v2
+        imagePullPolicy: Never  # Use local image
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Development"
+        - name: ASPNETCORE_URLS
+          value: "http://+:80"
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Port=5432;Database=equipmentdb;Username=equipmentuser;Password=equipment123"
+        ports:
+        - containerPort: 80
+---
+# Equipment API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: equipment-api
+  namespace: digital-twin
+spec:
+  selector:
+    app: equipment-api
+  ports:
+  - port: 8080
+    targetPort: 80
+  type: NodePort

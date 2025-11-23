@@ -1,0 +1,12 @@
+⏰ CRITICAL: DELETE AKS CLUSTER TONIGHT!
+
+Run these commands before you sleep:
+
+cd /workspaces/Process-digital-twin/infrastructure/terraform
+terraform destroy
+
+Type 'yes' when prompted.
+
+This stops ALL charges!
+
+Estimated savings: $2.40/day

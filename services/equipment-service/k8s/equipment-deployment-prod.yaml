@@ -1,0 +1,91 @@
+# PRODUCTION-READY Equipment API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: equipment-api
+  namespace: digital-twin
+  labels:
+    app: equipment-api
+    version: v2
+spec:
+  replicas: 3
+  
+  # ROLLING UPDATE STRATEGY - Zero Downtime!
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Can create 1 extra pod during update
+      maxUnavailable: 0  # Never allow pods to be unavailable!
+  
+  selector:
+    matchLabels:
+      app: equipment-api
+  
+  template:
+    metadata:
+      labels:
+        app: equipment-api
+        version: v2
+    spec:
+      containers:
+      - name: api
+        image: equipment-service:v3
+        imagePullPolicy: Never  # For KIND
+        
+        # ENVIRONMENT VARIABLES
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+        - name: ASPNETCORE_URLS
+          value: "http://+:80"
+        - name: ConnectionStrings__DefaultConnection
+          value: "Host=postgres;Port=5432;Database=equipmentdb;Username=equipmentuser;Password=equipment123"
+        
+        # PORTS
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        
+        # HEALTH CHECKS - Critical for Production!
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        
+        # RESOURCE LIMITS - Prevent resource exhaustion!
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+# Equipment API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: equipment-api
+  namespace: digital-twin
+spec:
+  selector:
+    app: equipment-api
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 80
+  type: NodePort
