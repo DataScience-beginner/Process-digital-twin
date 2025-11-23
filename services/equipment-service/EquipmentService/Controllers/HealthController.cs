@@ -16,12 +16,13 @@ public class HealthController : ControllerBase
     [HttpGet]
     public IActionResult Get()
     {
-        // Simple health check - returns 200 OK if API is running
         return Ok(new
         {
             status = "Healthy",
             timestamp = DateTime.UtcNow,
-            service = "Equipment API"
+            service = "Equipment API",
+            version = "v3.1",  // Added version!
+            environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
         });
     }
 }
