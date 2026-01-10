@@ -1,0 +1,36 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "InfluxDB",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 0},
+      "id": 2,
+      "options": {},
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {"type": "influxdb", "uid": ""},
+          "query": "from(bucket:\"refinery\") |> range(start: -5m) |> filter(fn: (r) => r._measurement == \"mqtt_consumer\") |> filter(fn: (r) => r._field =~ /temperature|metrics.temperature|metrics_temperature/) |> aggregateWindow(every: 1s, fn: mean, createEmpty: false)"
+        }
+      ],
+      "title": "Temperature (last 5m)",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": [],
+  "templating": {"list": []},
+  "time": {"from": "now-5m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Refinery Telemetry",
+  "uid": "refinery-telemetry",
+  "version": 1
+}
