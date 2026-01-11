@@ -76,7 +76,7 @@ namespace EquipmentService.Controllers
             if (existing == null)
                 return NotFound(new { message = $"Equipment with ID {id} not found" });
 
-            // Update fields
+            // Update only the editable fields, preserving Id and CreatedAt
             existing.TagNumber = equipment.TagNumber;
             existing.Name = equipment.Name;
             existing.Type = equipment.Type;
@@ -118,15 +118,21 @@ namespace EquipmentService.Controllers
         [HttpGet("stats")]
         public async Task<ActionResult<object>> GetStats()
         {
+            // Optimized: Use database aggregation for statistics
+            var totalCount = await _context.Equipment.CountAsync();
+            var operatingCount = await _context.Equipment.CountAsync(e => e.Status == "Operating");
+            var maintenanceCount = await _context.Equipment.CountAsync(e => e.Status == "Maintenance");
+            var equipmentTypes = await _context.Equipment
+                .GroupBy(e => e.Type)
+                .Select(g => new { type = g.Key, count = g.Count() })
+                .ToListAsync();
+            
             var stats = new
             {
-                totalCount = await _context.Equipment.CountAsync(),
-                operatingCount = await _context.Equipment.CountAsync(e => e.Status == "Operating"),
-                maintenanceCount = await _context.Equipment.CountAsync(e => e.Status == "Maintenance"),
-                equipmentTypes = await _context.Equipment
-                    .GroupBy(e => e.Type)
-                    .Select(g => new { type = g.Key, count = g.Count() })
-                    .ToListAsync()
+                totalCount,
+                operatingCount,
+                maintenanceCount,
+                equipmentTypes
             };
             
             return Ok(stats);
@@ -141,8 +147,11 @@ namespace EquipmentService.Controllers
             if (string.IsNullOrWhiteSpace(query))
                 return BadRequest(new { message = "Search query is required" });
 
+            // Use EF.Functions.ILike for case-insensitive PostgreSQL search
+            // EF Core automatically parameterizes queries to prevent SQL injection
             var equipment = await _context.Equipment
-                .Where(e => e.TagNumber.Contains(query) || e.Name.Contains(query))
+                .Where(e => EF.Functions.ILike(e.TagNumber, $"%{query}%") || 
+                           EF.Functions.ILike(e.Name, $"%{query}%"))
                 .ToListAsync();
 
             return Ok(equipment);

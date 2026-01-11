@@ -84,7 +84,7 @@ namespace EquipmentService.Data
             });
 
             // 5. SEED DATA (Initial sample data)
-            // FIXED: Using DateTime.SpecifyKind to mark as UTC
+            // FIXED: Use fixed UTC timestamps for reproducibility
             // PostgreSQL requires timezone info for timestamp columns
             modelBuilder.Entity<Equipment>().HasData(
                 new Equipment
@@ -96,9 +96,8 @@ namespace EquipmentService.Data
                     Status = "Operating",
                     Capacity = 500,
                     Unit = "m³/h",
-                    // FIXED: Specify UTC timezone
                     InstallDate = DateTime.SpecifyKind(new DateTime(2020, 1, 15), DateTimeKind.Utc),
-                    CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                    CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1, 0, 0, 0), DateTimeKind.Utc)
                 },
                 new Equipment
                 {
@@ -109,9 +108,8 @@ namespace EquipmentService.Data
                     Status = "Operating",
                     Capacity = 50,
                     Unit = "MW",
-                    // FIXED: Specify UTC timezone
                     InstallDate = DateTime.SpecifyKind(new DateTime(2019, 6, 20), DateTimeKind.Utc),
-                    CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                    CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1, 0, 0, 0), DateTimeKind.Utc)
                 },
                 new Equipment
                 {
@@ -122,9 +120,8 @@ namespace EquipmentService.Data
                     Status = "Operating",
                     Capacity = 100000,
                     Unit = "bbl/day",
-                    // FIXED: Specify UTC timezone
                     InstallDate = DateTime.SpecifyKind(new DateTime(2018, 3, 10), DateTimeKind.Utc),
-                    CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
+                    CreatedAt = DateTime.SpecifyKind(new DateTime(2024, 1, 1, 0, 0, 0), DateTimeKind.Utc)
                 }
             );
         }
