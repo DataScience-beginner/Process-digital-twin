@@ -147,13 +147,11 @@ namespace EquipmentService.Controllers
             if (string.IsNullOrWhiteSpace(query))
                 return BadRequest(new { message = "Search query is required" });
 
-            // Sanitize query to escape special LIKE characters (%, _)
-            var sanitizedQuery = query.Replace("%", "\\%").Replace("_", "\\_");
-
-            // Optimized: Use EF.Functions.ILike for case-insensitive PostgreSQL search
+            // Use EF.Functions.ILike for case-insensitive PostgreSQL search
+            // EF Core automatically parameterizes queries to prevent SQL injection
             var equipment = await _context.Equipment
-                .Where(e => EF.Functions.ILike(e.TagNumber, $"%{sanitizedQuery}%") || 
-                           EF.Functions.ILike(e.Name, $"%{sanitizedQuery}%"))
+                .Where(e => EF.Functions.ILike(e.TagNumber, $"%{query}%") || 
+                           EF.Functions.ILike(e.Name, $"%{query}%"))
                 .ToListAsync();
 
             return Ok(equipment);
