@@ -76,16 +76,11 @@ namespace EquipmentService.Controllers
             if (existing == null)
                 return NotFound(new { message = $"Equipment with ID {id} not found" });
 
-            // Update fields
-            existing.TagNumber = equipment.TagNumber;
-            existing.Name = equipment.Name;
-            existing.Type = equipment.Type;
-            existing.Status = equipment.Status;
-            existing.Capacity = equipment.Capacity;
-            existing.Unit = equipment.Unit;
-            existing.InstallDate = equipment.InstallDate;
-            existing.UpdatedAt = DateTime.UtcNow;
-
+            // Optimized: Use EF Core's SetValues for efficient updates
+            equipment.CreatedAt = existing.CreatedAt; // Preserve original creation time
+            equipment.UpdatedAt = DateTime.UtcNow;
+            
+            _context.Entry(existing).CurrentValues.SetValues(equipment);
             await _context.SaveChangesAsync();
             
             _logger.LogInformation("Updated equipment: {TagNumber}", equipment.TagNumber);
@@ -118,15 +113,19 @@ namespace EquipmentService.Controllers
         [HttpGet("stats")]
         public async Task<ActionResult<object>> GetStats()
         {
+            // Optimized: Single query to fetch all equipment data
+            var allEquipment = await _context.Equipment.ToListAsync();
+            
+            // Calculate statistics in-memory (more efficient than 4 separate DB queries)
             var stats = new
             {
-                totalCount = await _context.Equipment.CountAsync(),
-                operatingCount = await _context.Equipment.CountAsync(e => e.Status == "Operating"),
-                maintenanceCount = await _context.Equipment.CountAsync(e => e.Status == "Maintenance"),
-                equipmentTypes = await _context.Equipment
+                totalCount = allEquipment.Count,
+                operatingCount = allEquipment.Count(e => e.Status == "Operating"),
+                maintenanceCount = allEquipment.Count(e => e.Status == "Maintenance"),
+                equipmentTypes = allEquipment
                     .GroupBy(e => e.Type)
                     .Select(g => new { type = g.Key, count = g.Count() })
-                    .ToListAsync()
+                    .ToList()
             };
             
             return Ok(stats);
@@ -141,8 +140,10 @@ namespace EquipmentService.Controllers
             if (string.IsNullOrWhiteSpace(query))
                 return BadRequest(new { message = "Search query is required" });
 
+            // Optimized: Use EF.Functions.ILike for case-insensitive PostgreSQL search
             var equipment = await _context.Equipment
-                .Where(e => e.TagNumber.Contains(query) || e.Name.Contains(query))
+                .Where(e => EF.Functions.ILike(e.TagNumber, $"%{query}%") || 
+                           EF.Functions.ILike(e.Name, $"%{query}%"))
                 .ToListAsync();
 
             return Ok(equipment);

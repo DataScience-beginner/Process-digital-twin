@@ -26,13 +26,13 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// ⭐ NEW: Auto-migrate database on startup (for development)
+// ⭐ OPTIMIZED: Async database migration to avoid blocking startup
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<EquipmentDbContext>();
     try
     {
-        dbContext.Database.Migrate();
+        await dbContext.Database.MigrateAsync();
         app.Logger.LogInformation("Database migration completed successfully");
     }
     catch (Exception ex)
