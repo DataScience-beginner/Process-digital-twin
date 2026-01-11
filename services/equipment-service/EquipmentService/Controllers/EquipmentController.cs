@@ -76,11 +76,16 @@ namespace EquipmentService.Controllers
             if (existing == null)
                 return NotFound(new { message = $"Equipment with ID {id} not found" });
 
-            // Optimized: Use EF Core's SetValues for efficient updates
-            equipment.CreatedAt = existing.CreatedAt; // Preserve original creation time
-            equipment.UpdatedAt = DateTime.UtcNow;
-            
-            _context.Entry(existing).CurrentValues.SetValues(equipment);
+            // Update only the editable fields, preserving Id and CreatedAt
+            existing.TagNumber = equipment.TagNumber;
+            existing.Name = equipment.Name;
+            existing.Type = equipment.Type;
+            existing.Status = equipment.Status;
+            existing.Capacity = equipment.Capacity;
+            existing.Unit = equipment.Unit;
+            existing.InstallDate = equipment.InstallDate;
+            existing.UpdatedAt = DateTime.UtcNow;
+
             await _context.SaveChangesAsync();
             
             _logger.LogInformation("Updated equipment: {TagNumber}", equipment.TagNumber);
