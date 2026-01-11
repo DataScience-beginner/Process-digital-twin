@@ -118,19 +118,21 @@ namespace EquipmentService.Controllers
         [HttpGet("stats")]
         public async Task<ActionResult<object>> GetStats()
         {
-            // Optimized: Single query to fetch all equipment data
-            var allEquipment = await _context.Equipment.ToListAsync();
+            // Optimized: Use database aggregation for statistics
+            var totalCount = await _context.Equipment.CountAsync();
+            var operatingCount = await _context.Equipment.CountAsync(e => e.Status == "Operating");
+            var maintenanceCount = await _context.Equipment.CountAsync(e => e.Status == "Maintenance");
+            var equipmentTypes = await _context.Equipment
+                .GroupBy(e => e.Type)
+                .Select(g => new { type = g.Key, count = g.Count() })
+                .ToListAsync();
             
-            // Calculate statistics in-memory (more efficient than 4 separate DB queries)
             var stats = new
             {
-                totalCount = allEquipment.Count,
-                operatingCount = allEquipment.Count(e => e.Status == "Operating"),
-                maintenanceCount = allEquipment.Count(e => e.Status == "Maintenance"),
-                equipmentTypes = allEquipment
-                    .GroupBy(e => e.Type)
-                    .Select(g => new { type = g.Key, count = g.Count() })
-                    .ToList()
+                totalCount,
+                operatingCount,
+                maintenanceCount,
+                equipmentTypes
             };
             
             return Ok(stats);
@@ -145,10 +147,13 @@ namespace EquipmentService.Controllers
             if (string.IsNullOrWhiteSpace(query))
                 return BadRequest(new { message = "Search query is required" });
 
+            // Sanitize query to escape special LIKE characters (%, _)
+            var sanitizedQuery = query.Replace("%", "\\%").Replace("_", "\\_");
+
             // Optimized: Use EF.Functions.ILike for case-insensitive PostgreSQL search
             var equipment = await _context.Equipment
-                .Where(e => EF.Functions.ILike(e.TagNumber, $"%{query}%") || 
-                           EF.Functions.ILike(e.Name, $"%{query}%"))
+                .Where(e => EF.Functions.ILike(e.TagNumber, $"%{sanitizedQuery}%") || 
+                           EF.Functions.ILike(e.Name, $"%{sanitizedQuery}%"))
                 .ToListAsync();
 
             return Ok(equipment);
