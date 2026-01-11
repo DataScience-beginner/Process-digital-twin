@@ -32,6 +32,7 @@ appsettings.Development.json
 .env
 secrets/
 
-# Logs
-*.log
-logs/
+# Mosquitto password file and env
+services/equipment-service/mosquitto/passwordfile
+services/equipment-service/mosquitto/.env
+services/equipment-service/mosquitto/config/passwordfile
