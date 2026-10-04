@@ -25,6 +25,7 @@ from .thread_service import DESIGN_CASES, build_object_dossier
 from .topology_compiler import compile_engineering_topology
 from .topology_compile_renderer import render_compilation_trace_html
 from .simulation import publish_demo_simulation
+from .object_detail_renderer import render_object_detail_html
 from .publishing import (
     PublishStage,
     PublicationBlocked,
@@ -183,6 +184,14 @@ def database_object_dossier(object_id: str):
     engine = _app_engine()
     with Session(engine) as session:
         return load_object_dossier(session, object_id).model_dump(mode="json")
+
+
+@app.get("/object/{object_id}/detail", response_class=HTMLResponse)
+def object_detail_view(object_id: str):
+    engine = _app_engine()
+    with Session(engine) as session:
+        dossier = load_object_dossier(session, object_id)
+    return render_object_detail_html(dossier)
 
 
 @app.get("/api/db/summary")
