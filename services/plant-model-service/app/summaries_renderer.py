@@ -44,6 +44,8 @@ def render_summaries_html(summaries: dict[str, list[dict[str, Any]]]) -> str:
         ("technical_summary", "Technical / Mechanical Summary"),
         ("cost_summary", "Cost Summary"),
         ("publication_summary", "Publication / Completion Summary"),
+        ("drawing_index", "P&ID / Drawing Index"),
+        ("continuation_register", "Cross-Sheet Continuation Register"),
     ]
     buttons = "".join(
         f'<button class="tab {"active" if i == 0 else ""}" onclick="showTab(\'{key}\',this)">{html.escape(label)}</button>'
