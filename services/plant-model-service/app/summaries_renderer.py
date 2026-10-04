@@ -81,7 +81,7 @@ table{{border-collapse:collapse;width:100%;font-size:8.5px}} th,td{{border:1px s
 </style>
 </head>
 <body>
-<header><div><strong>Digital BDEP — Generated BDEP Summaries</strong><div style="font-size:9px;color:#64748b">One model → all discipline lists and registers</div></div><nav><a href="/engineering">P&ID</a><a href="/hazop">HAZOP</a><a href="/export/dexpi.xml">DEXPI XML</a></nav></header>
+<header><div><strong>Digital BDEP — Generated BDEP Summaries</strong><div style="font-size:9px;color:#64748b">One model → all discipline lists and registers</div></div><nav><a href="/engineering">P&ID</a><a href="/hazop">HAZOP</a><a href="/export/summaries.pdf">Summary PDF</a><a href="/export/dexpi.xml">DEXPI XML</a></nav></header>
 <main>
 <div class="hero">
 <div class="card"><div class="label">Equipment</div><div class="big">{len(summaries.get("equipment_list", []))}</div></div>
