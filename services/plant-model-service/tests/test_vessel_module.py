@@ -8,10 +8,13 @@ def test_integrated_model_has_two_modules():
     assert "CENTRIFUGAL_PUMP_STANDARD_WITH_MIN_FLOW" in templates
 
 
-def test_vessel_module_contains_control_and_relief_objects():
+def test_vessel_module_contains_control_relief_and_nozzle_nodes():
     model = demo_integrated_configuration_model()
     tags = {obj.tag for obj in model.objects}
-    expected = {"PT-101", "PI-101", "LT-101", "LI-101", "LIC-101", "LCV-101", "PSV-101"}
+    expected = {
+        "PT-101", "PI-101", "LT-101", "LI-101", "LIC-101",
+        "LCV-101", "PSV-101", "V-101/N-LIQ", "V-101/N-PSV",
+    }
     assert expected <= tags
 
 
@@ -25,14 +28,17 @@ def test_psv_protects_vessel():
     model = demo_integrated_configuration_model()
     matches = [
         a for a in model.associations
-        if a.subject_id == "VLV-PSV101" and a.relationship == "protects" and a.target_id == "EQ-V101"
+        if a.subject_id == "VLV-PSV101"
+        and a.relationship == "protects"
+        and a.target_id == "EQ-V101"
     ]
     assert len(matches) == 1
 
 
-def test_vessel_liquid_outlet_reaches_pump_through_lcv_and_isolation():
+def test_vessel_liquid_outlet_reaches_pump_through_nozzle_nodes():
     model = demo_integrated_configuration_model()
     path = {(c.source.object_id, c.target.object_id) for c in model.connections}
-    assert ("EQ-V101", "VLV-LCV101") in path
+    assert ("NOZ-V101-LIQ", "VLV-LCV101") in path
     assert ("VLV-LCV101", "VLV-XV101") in path
-    assert ("VLV-XV101", "EQ-P101") in path
+    assert ("VLV-XV101", "NOZ-P101-SUC") in path
+    assert ("NOZ-P101-DIS", "JUNC-P101-DIS") in path
