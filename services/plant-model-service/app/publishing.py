@@ -2004,6 +2004,68 @@ def publish_mechanical(session: Session) -> PublicationResult:
                     {"name": "Final thickness / nozzle schedule", "value": "TBD by qualified mechanical design service"},
                 ],
                 method="Technical/mechanical basis publisher from process duty and approved Design Basis criteria.",
+                trace=_trace(
+                    trace_id="TRACE-MECH-V101",
+                    calculation_type="vessel_technical_mechanical_basis",
+                    input_sources=[
+                        {"source": "CALC-V101-HOLDUP", "field": "process_holdup_volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+                        {"source": "SIM-002", "field": "maximum_process_temperature", "value": round(max_temp, 3), "unit": "degC"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-SET-PRESSURE", "value": psv_set, "unit": "barg"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-VESSEL-DT-MARGIN", "value": design_temp_margin, "unit": "degC"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Select maximum process temperature",
+                            "equation": "T_process,max = max(T_streams, maximum case)",
+                            "substitution": f"{max_temp:.3f} degC",
+                            "result": round(max_temp, 3),
+                            "unit": "degC",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Apply design-temperature margin",
+                            "equation": "T_design = T_process,max + DeltaT_margin",
+                            "substitution": f"{max_temp:.3f} + {design_temp_margin:.3f}",
+                            "result": round(max_temp + design_temp_margin, 3),
+                            "unit": "degC",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Assign preliminary design pressure basis",
+                            "equation": "P_design,basis = published PSV set pressure basis",
+                            "substitution": f"{psv_set:.3f} barg",
+                            "result": psv_set,
+                            "unit": "barg",
+                        },
+                        {
+                            "step": 4,
+                            "title": "Publish material/code/corrosion basis",
+                            "equation": "Mechanical basis = approved Design Basis criteria",
+                            "substitution": f"{vessel_moc}; CA={corrosion_allowance:g} mm; {vessel_code}",
+                            "result": "PRELIMINARY MECHANICAL BASIS PUBLISHED",
+                            "unit": None,
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Design temperature >= maximum process temperature", "actual": round(max_temp + design_temp_margin, 3), "criterion": f">= {max_temp:.3f} degC", "result": "PASS"},
+                        {"check": "Material criterion published", "actual": vessel_moc, "criterion": "Approved Design Basis value", "result": "PASS"},
+                        {"check": "Final wall thickness calculated", "actual": "No", "criterion": "Required before mechanical issue", "result": "GATED"},
+                    ],
+                    assumptions=[
+                        "PSV set-pressure basis is used here only as the preliminary pressure-datasheet basis.",
+                    ],
+                    limitations=[
+                        "No wall-thickness, external-pressure, nozzle-reinforcement, support, fatigue or detailed code calculation is included.",
+                    ],
+                    downstream_consumers=[
+                        "V-101 mechanical datasheet",
+                        "Vessel mechanical design service",
+                        "Vendor requisition",
+                        "Cost estimate",
+                    ],
+                    qualification="Preliminary technical/mechanical basis; detailed mechanical calculation remains gated",
+                ),
             ),
         )
     )
@@ -2062,6 +2124,60 @@ def publish_mechanical(session: Session) -> PublicationResult:
                     {"name": "Vendor curve / final selection", "value": "TBD during vendor stage"},
                 ],
                 method="Technical/mechanical package basis publisher from process duty.",
+                trace=_trace(
+                    trace_id="TRACE-MECH-P101",
+                    calculation_type="pump_package_technical_basis",
+                    input_sources=[
+                        {"source": "CALC-P101-001", "field": "rated_flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                        {"source": "CALC-P101-001", "field": "rated_head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                        {"source": "CALC-P101-001", "field": "shaft_power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-MOTOR-MARGIN", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Read published process rated duty",
+                            "equation": "Duty = published process calculation",
+                            "substitution": f'Q={n["pump_rated_flow_tph"]:.3f} t/h, H={n["pump_rated_head_m"]:.3f} m',
+                            "result": "PROCESS DUTY ACCEPTED",
+                            "unit": None,
+                        },
+                        {
+                            "step": 2,
+                            "title": "Publish preliminary driver duty",
+                            "equation": "P_driver,prelim = published motor requirement",
+                            "substitution": f'{n["motor_preliminary_kw"]:.3f} kW',
+                            "result": round(n["motor_preliminary_kw"], 3),
+                            "unit": "kW",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Gate final package selection",
+                            "equation": "Final package = vendor curve + NPSH + mechanical checks",
+                            "substitution": "Vendor data not yet published",
+                            "result": "TBD DURING VENDOR STAGE",
+                            "unit": None,
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Rated process duty available", "actual": "Yes", "criterion": "Required", "result": "PASS"},
+                        {"check": "Preliminary motor positive", "actual": round(n["motor_preliminary_kw"], 3), "criterion": "> 0 kW", "result": "PASS"},
+                        {"check": "Vendor curve/NPSHR available", "actual": "No", "criterion": "Required for final selection", "result": "GATED"},
+                    ],
+                    assumptions=[
+                        "Electric motor is the preliminary driver type.",
+                    ],
+                    limitations=[
+                        "No vendor curve, NPSHR, mechanical seal, metallurgy, bearing, vibration or API/vendor package compliance selection is included.",
+                    ],
+                    downstream_consumers=[
+                        "P-101 package datasheet",
+                        "Electrical motor/load list",
+                        "Vendor requisition",
+                        "Cost estimate",
+                    ],
+                    qualification="Preliminary pump-package technical basis",
+                ),
             ),
         )
     )
@@ -2172,6 +2288,48 @@ def publish_costing(session: Session) -> PublicationResult:
                             {"name": "Estimated cost", "value": round(spec["value"], 2), "unit": currency},
                         ],
                         method=f'Demo parametric formula: {spec["formula"]}. Replace with the approved company/licensor cost-estimation service.',
+                        trace=_trace(
+                            trace_id=f'TRACE-{spec["record_id"]}',
+                            calculation_type="demo_parametric_cost_estimate",
+                            input_sources=[
+                                {"source": "Published multidisciplinary technical basis", **row}
+                                for row in spec["inputs"]
+                            ],
+                            steps=[
+                                {
+                                    "step": 1,
+                                    "title": "Read published technical cost driver",
+                                    "equation": "Input = latest published technical result",
+                                    "substitution": str(spec["inputs"]),
+                                    "result": "INPUT ACCEPTED",
+                                    "unit": None,
+                                },
+                                {
+                                    "step": 2,
+                                    "title": "Apply transparent demo parametric formula",
+                                    "equation": spec["formula"],
+                                    "substitution": spec["formula"],
+                                    "result": round(spec["value"], 2),
+                                    "unit": currency,
+                                },
+                            ],
+                            validation_checks=[
+                                {"check": "Estimated cost positive", "actual": round(spec["value"], 2), "criterion": f"> 0 {currency}", "result": "PASS"},
+                                {"check": "Commercial estimating model qualified", "actual": "No", "criterion": "Required for commercial use", "result": "GATED"},
+                            ],
+                            assumptions=[
+                                "Demo coefficients are illustrative and transparent.",
+                            ],
+                            limitations=[
+                                "No location factor, escalation, installation factor, indirects, contingency, vendor quotation or project-specific estimating database is applied.",
+                            ],
+                            downstream_consumers=[
+                                "Project cost dashboard",
+                                "Equipment cost summary",
+                                "Techno-commercial screening",
+                            ],
+                            qualification="Demo non-commercial parametric estimate only",
+                        ),
                     ),
                 },
             )
@@ -2217,6 +2375,34 @@ def publish_costing(session: Session) -> PublicationResult:
                         {"name": "Section total", "value": round(total, 2), "unit": currency},
                     ],
                     method="Demo multidisciplinary cost roll-up; replace coefficients and scope factors with approved estimating methodology.",
+                    trace=_trace(
+                        trace_id="TRACE-COST-PACKAGE-TOTAL",
+                        calculation_type="demo_section_cost_rollup",
+                        input_sources=[
+                            {"source": "COST-V101", "field": "V-101 estimate", "value": round(vessel_cost, 2), "unit": currency},
+                            {"source": "COST-P101", "field": "P-101 estimate", "value": round(pump_cost, 2), "unit": currency},
+                            {"source": "COST-FCV101", "field": "FCV-101 estimate", "value": round(valve_cost, 2), "unit": currency},
+                            {"source": "Demo instrumentation allowance", "field": "instrumentation package", "value": round(instrumentation_package, 2), "unit": currency},
+                        ],
+                        steps=[
+                            {
+                                "step": 1,
+                                "title": "Sum published demo estimates",
+                                "equation": "Total = vessel + pump + control valve + instrumentation package",
+                                "substitution": f'{vessel_cost:.2f} + {pump_cost:.2f} + {valve_cost:.2f} + {instrumentation_package:.2f}',
+                                "result": round(total, 2),
+                                "unit": currency,
+                            }
+                        ],
+                        validation_checks=[
+                            {"check": "Roll-up arithmetic", "actual": round(total, 2), "criterion": "Equals sum of component estimates", "result": "PASS"},
+                            {"check": "Commercial estimate readiness", "actual": "No", "criterion": "Qualified estimating model + complete scope required", "result": "GATED"},
+                        ],
+                        assumptions=["Current section scope contains only the published demo equipment/valve/instrument allowance."],
+                        limitations=["This is not a Class 3/4/5 commercial estimate and must not be used for commercial commitment."],
+                        downstream_consumers=["Project dashboard", "Cost summary", "Techno-commercial screening"],
+                        qualification="Demo non-commercial cost roll-up",
+                    ),
                 ),
             },
         )
