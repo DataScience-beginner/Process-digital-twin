@@ -375,6 +375,7 @@ def build_inspection_graph(
             "through": path_refs[1:-1] if len(path_refs) > 2 else [],
             "line_number": line_number,
             "stream_number": stream_number,
+            "engineering_record_id": record.id if record is not None else None,
             "record_value": value,
             "record_metadata": metadata,
             "record_provenance": provenance,
