@@ -10,6 +10,7 @@ from .config_match_renderer import render_configuration_match_html
 from .cleanup import build_cleanup
 from .configurations import demo_integrated_configuration_model
 from .drafter import build_drafter_instrumented, build_drafter_skeleton
+from .dashboard_renderer import render_dashboard_html
 from .db_schema import engine_from_url
 from .graph_renderer import render_graph_html
 from .instrumented_renderer import render_instrumented_pid_html
@@ -99,6 +100,30 @@ def engineering_view():
         dossiers,
         publication_stages=stages,
     )
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_view():
+    engine = _app_engine()
+    object_ids = [
+        "EQ-V101",
+        "EQ-P101",
+        "VLV-PSV101",
+        "VLV-LCV101",
+        "VLV-FCV101",
+        "INS-PT101",
+        "INS-LT101",
+        "INS-LIC101",
+        "INS-FT101",
+        "INS-FIC101",
+    ]
+    with Session(engine) as session:
+        dossiers = {
+            object_id: load_object_dossier(session, object_id)
+            for object_id in object_ids
+        }
+        stages = publication_status(session)
+    return render_dashboard_html(dossiers, stages)
 
 
 @app.get("/engineering-05b", response_class=HTMLResponse)
