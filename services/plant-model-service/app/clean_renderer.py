@@ -189,7 +189,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <body>
 <header>
 <div><strong>Digital BDEP — Engineering View</strong><div class="muted">Staged publishing · connected P&ID + object-centric Digital Thread</div></div>
-<nav><a href="/dashboard">Dashboard</a><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
+<nav><a href="/dashboard">Dashboard</a><a href="/hazop">HAZOP</a><a href="/summaries">Summaries</a><a href="/engineering-2">PID-002</a><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
 </header>
 <div class="publishbar" id="publishbar"></div>
 <main>
@@ -308,8 +308,8 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <h3 id="objectTag">Digital BDEP Object</h3>
 <div id="objectMeta" class="muted">Click any visible equipment, valve, instrument, boundary or line</div>
 <div class="object-actions">
-<button class="detail-btn" onclick="openDetailModal()">↗ Detailed View</button>
-<button class="detail-btn" onclick="popOutDetail()">⧉ Pop out</button>
+<button class="detail-btn" onclick="openDetailModal()">↗ Quick Detail</button>
+<button class="detail-btn" onclick="popOutDetail()">⧉ Calculation Workspace</button>
 </div>
 </div>
 <div class="view-switch">
@@ -693,7 +693,7 @@ function openDetailModal(){{
 }}
 function popOutDetail(){{
  if(!selectedId)return;
- window.open('/entity/'+encodeURIComponent(selectedId)+'/detail','_blank','noopener');
+ window.open('/workspace/'+encodeURIComponent(selectedId),'_blank','noopener');
 }}
 function openTab(tab){{activeTab=tab;render();}}
 function setInspectorMode(mode){{
