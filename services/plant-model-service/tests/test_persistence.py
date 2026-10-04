@@ -16,6 +16,7 @@ def test_seeded_database_has_canonical_topology_and_case_results():
     engine = create_schema("sqlite+pysqlite:///:memory:")
     counts = seed_demo_database(engine)
 
+    assert counts["process_configurations"] == 1
     assert counts["equipment"] == 2
     assert counts["streams"] == 4
     assert counts["simulation_cases"] == 3
@@ -59,6 +60,7 @@ def test_database_summary_reflects_seeded_thread():
         summary = database_summary(session)
 
     assert summary["projects"] == 1
+    assert summary["process_configurations"] == 1
     assert summary["design_cases"] == 3
     assert summary["simulation_cases"] == 3
     assert summary["equipment"] == 2
@@ -80,6 +82,7 @@ def test_alembic_upgrade_creates_core_schema(tmp_path):
     tables = set(inspect(create_engine(f"sqlite+pysqlite:///{db_path}")).get_table_names())
     assert {
         "projects",
+        "process_configurations",
         "design_basis_revisions",
         "design_basis_criteria",
         "criterion_object_links",
@@ -92,3 +95,20 @@ def test_alembic_upgrade_creates_core_schema(tmp_path):
         "engineering_records",
         "record_object_links",
     } <= tables
+
+
+
+def test_approved_configuration_round_trips_from_database():
+    from app.persistence import load_approved_configurations
+
+    engine = create_schema("sqlite+pysqlite:///:memory:")
+    seed_demo_database(engine)
+
+    with Session(engine) as session:
+        definitions = load_approved_configurations(session)
+
+    assert len(definitions) == 1
+    definition = definitions[0]
+    assert definition.id == "VESSEL_TO_PUMP_STANDARD_V1"
+    assert definition.version == "1.0"
+    assert "PUMP_MIN_FLOW_STANDARD_V1" in definition.engineering_modules
