@@ -30,10 +30,15 @@ class ValveType(StrEnum):
     ISOLATION = "isolation_valve"
     CHECK = "check_valve"
     CONTROL = "control_valve"
+    RELIEF = "relief_valve"
 
 
 class InstrumentType(StrEnum):
     PRESSURE_INDICATOR = "pressure_indicator"
+    PRESSURE_TRANSMITTER = "pressure_transmitter"
+    LEVEL_INDICATOR = "level_indicator"
+    LEVEL_TRANSMITTER = "level_transmitter"
+    LEVEL_CONTROLLER = "level_controller"
     FLOW_TRANSMITTER = "flow_transmitter"
     FLOW_CONTROLLER = "flow_controller"
 
@@ -152,6 +157,7 @@ class PlantModel(BaseModel):
             raise ValueError("Duplicate connection IDs are not allowed")
 
         by_id = {obj.id: obj for obj in self.objects}
+
         for connection in self.connections:
             source_port = self._resolve_endpoint(connection.id, "source", connection.source, by_id)
             target_port = self._resolve_endpoint(connection.id, "target", connection.target, by_id)
@@ -204,9 +210,8 @@ class PlantModel(BaseModel):
         if connection.kind == ConnectionKind.SIGNAL:
             if source.kind != PortKind.SIGNAL or target.kind != PortKind.SIGNAL:
                 raise ValueError(f"Signal connection {connection.id} must use signal ports")
-        else:
-            if source.kind == PortKind.SIGNAL or target.kind == PortKind.SIGNAL:
-                raise ValueError(f"Process connection {connection.id} cannot use signal ports")
+        elif source.kind == PortKind.SIGNAL or target.kind == PortKind.SIGNAL:
+            raise ValueError(f"Process connection {connection.id} cannot use signal ports")
 
     def object(self, object_id: str) -> PlantObjectUnion:
         for obj in self.objects:
