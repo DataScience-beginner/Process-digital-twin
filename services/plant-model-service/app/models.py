@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -46,6 +47,12 @@ class InstrumentType(StrEnum):
 class JunctionType(StrEnum):
     BRANCH = "branch"
     BOUNDARY = "boundary"
+
+
+class NozzleType(StrEnum):
+    PROCESS = "process_nozzle"
+    INSTRUMENT = "instrument_nozzle"
+    ACCESS = "access_nozzle"
 
 
 class ConnectionKind(StrEnum):
@@ -100,8 +107,14 @@ class Junction(PlantObject):
     junction_type: JunctionType
 
 
+class Nozzle(PlantObject):
+    category: Literal["nozzle"] = "nozzle"
+    nozzle_type: NozzleType
+    parent_equipment_id: str
+
+
 PlantObjectUnion = Annotated[
-    Equipment | Valve | Instrument | Junction,
+    Equipment | Valve | Instrument | Junction | Nozzle,
     Field(discriminator="category"),
 ]
 
@@ -158,6 +171,15 @@ class PlantModel(BaseModel):
 
         by_id = {obj.id: obj for obj in self.objects}
 
+        for obj in self.objects:
+            if isinstance(obj, Nozzle):
+                parent = by_id.get(obj.parent_equipment_id)
+                if not isinstance(parent, Equipment):
+                    raise ValueError(
+                        f"Nozzle {obj.id} references invalid parent equipment "
+                        f"'{obj.parent_equipment_id}'"
+                    )
+
         for connection in self.connections:
             source_port = self._resolve_endpoint(connection.id, "source", connection.source, by_id)
             target_port = self._resolve_endpoint(connection.id, "target", connection.target, by_id)
@@ -165,10 +187,14 @@ class PlantModel(BaseModel):
 
         for association in self.associations:
             if association.subject_id not in by_id:
-                raise ValueError(f"Association {association.id} references unknown subject '{association.subject_id}'")
+                raise ValueError(
+                    f"Association {association.id} references unknown subject '{association.subject_id}'"
+                )
             target = by_id.get(association.target_id)
             if target is None:
-                raise ValueError(f"Association {association.id} references unknown target '{association.target_id}'")
+                raise ValueError(
+                    f"Association {association.id} references unknown target '{association.target_id}'"
+                )
             if association.target_port:
                 try:
                     target.port(association.target_port)
@@ -181,7 +207,9 @@ class PlantModel(BaseModel):
         for module in self.modules:
             missing = sorted(set(module.member_ids) - set(by_id))
             if missing:
-                raise ValueError(f"Module {module.id} references unknown members: {', '.join(missing)}")
+                raise ValueError(
+                    f"Module {module.id} references unknown members: {', '.join(missing)}"
+                )
 
         return self
 
@@ -190,7 +218,8 @@ class PlantModel(BaseModel):
         obj = by_id.get(endpoint.object_id)
         if obj is None:
             raise ValueError(
-                f"Connection {connection_id} {endpoint_name} references unknown object '{endpoint.object_id}'"
+                f"Connection {connection_id} {endpoint_name} references "
+                f"unknown object '{endpoint.object_id}'"
             )
         try:
             return obj.port(endpoint.port)
@@ -218,3 +247,47 @@ class PlantModel(BaseModel):
             if obj.id == object_id:
                 return obj
         raise KeyError(object_id)
+
+    def adjacency(self, *, include_associations: bool = True, bidirectional: bool = True) -> dict[str, set[str]]:
+        graph = {obj.id: set() for obj in self.objects}
+
+        def add_edge(source: str, target: str) -> None:
+            graph[source].add(target)
+            if bidirectional:
+                graph[target].add(source)
+
+        for connection in self.connections:
+            add_edge(connection.source.object_id, connection.target.object_id)
+
+        if include_associations:
+            for association in self.associations:
+                add_edge(association.subject_id, association.target_id)
+
+        return graph
+
+    def neighbors(self, object_id: str) -> set[str]:
+        if object_id not in {obj.id for obj in self.objects}:
+            raise KeyError(object_id)
+        return self.adjacency().get(object_id, set())
+
+    def impact_walk(self, start_id: str, *, max_depth: int | None = None) -> list[str]:
+        graph = self.adjacency()
+        if start_id not in graph:
+            raise KeyError(start_id)
+
+        seen = {start_id}
+        queue = deque([(start_id, 0)])
+        ordered: list[str] = []
+
+        while queue:
+            current, depth = queue.popleft()
+            if current != start_id:
+                ordered.append(current)
+            if max_depth is not None and depth >= max_depth:
+                continue
+            for neighbor in sorted(graph[current]):
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    queue.append((neighbor, depth + 1))
+
+        return ordered
