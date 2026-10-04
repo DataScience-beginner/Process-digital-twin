@@ -216,7 +216,7 @@ def render_calculation_workspace_html(
             source_id = entity.get("id")
             method = "linked line engineering record"
         class _R:
-            id = entity.get("id")
+            id = entity.get("record_id") or entity.get("id")
             name = "Line sizing / engineering calculation"
             value = entity.get("record_value")
             unit = None
