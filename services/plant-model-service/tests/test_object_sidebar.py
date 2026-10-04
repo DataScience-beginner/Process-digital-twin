@@ -231,7 +231,7 @@ def test_lines_are_contextual_not_dumped_into_every_object_calculation_tab():
 def test_engineering_workspace_keeps_existing_features_in_three_pane_shell():
     html = _render_db_view()
     for text in [
-        "Workspace",
+        "Engineering Model Browser",
         "P&ID 001 — Engineering",
         "Plant Model / Digital Thread",
         "P&ID 002 — Continuation",
@@ -240,10 +240,9 @@ def test_engineering_workspace_keeps_existing_features_in_three_pane_shell():
         "BDEP Summaries",
         "Configuration Match",
         "Compiler / Plant Data",
-        "Publish Project Stages",
-        "Discipline Inspector",
-        "Sketch / Stencil Palette",
-        "Drafting Assistance",
+        "Project Workflow & Views",
+        "Publish Stages",
+        "Sketch / Stencils & Drafting",
         "Exports",
         "Tabs",
         "Properties",
@@ -338,7 +337,7 @@ def test_drawing_selection_has_no_blue_round_or_blue_route_highlight():
     html = _render_db_view()
     assert "rgba(37,99,235,.16)" not in html
     assert "stroke:#1d4ed8" not in html
-    assert "route-hit:hover{{stroke:rgba(15,23,42,.08)}}" in html
+    assert "route-hit:hover{stroke:rgba(15,23,42,.08)}" in html
 
 
 def test_drawing_quality_is_a_right_inspector_tab_not_bottom_information_panel():
