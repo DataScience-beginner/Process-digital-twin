@@ -9,6 +9,7 @@ from .graph_renderer import render_graph_html
 from .instrumented_renderer import render_instrumented_pid_html
 from .skeleton_renderer import render_drafter_skeleton_html
 from .thread_service import DESIGN_CASES, build_object_dossier
+from .simulation import publish_demo_simulation
 
 app = FastAPI(title="Digital BDEP Prototype", version="0.5.3")
 
@@ -46,6 +47,22 @@ def engineering_skeleton():
 @app.get("/api/design-cases")
 def design_cases():
     return [case.model_dump(mode="json") for case in DESIGN_CASES]
+
+
+@app.get("/api/simulation/{design_case_id}")
+def simulation_publication(design_case_id: str):
+    return publish_demo_simulation(design_case_id).model_dump(mode="json")
+
+
+@app.get("/api/pfd-graph/{design_case_id}")
+def pfd_graph(design_case_id: str):
+    publication = publish_demo_simulation(design_case_id)
+    return {
+        "simulation_case_id": publication.simulation_case_id,
+        "design_case_id": publication.design_case_id,
+        "nodes": [item.model_dump(mode="json") for item in publication.equipment],
+        "edges": publication.pfd_edges(),
+    }
 
 
 @app.get("/api/object/{object_id}/dossier")
