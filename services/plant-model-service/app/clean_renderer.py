@@ -496,7 +496,7 @@ function renderConnections(e){{
 function lineRecord(e){{
  if(!e||!e.record_value)return null;
  return {{
-   id:e.id,
+   id:e.engineering_record_id||e.id,
    name:"Line / connection engineering record",
    value:e.record_value,
    unit:null,
