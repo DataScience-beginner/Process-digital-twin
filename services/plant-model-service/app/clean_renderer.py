@@ -5,7 +5,8 @@ import json
 
 from .cleanup import AnnotationKind, CleanupResult
 from .drafter import DrafterPlan
-from .instrumented_renderer import _bubble, _route_svg
+from .instrumented_renderer import _bubble, _route_class
+from .inspection_graph import build_inspection_graph, route_entity_id
 from .models import PlantModel
 from .thread_models import ObjectDossier
 
@@ -30,6 +31,22 @@ def _annotation_svg(
             f'data-annotation-id="{html.escape(ann.annotation_id)}">{html.escape(display_text)}</text>'
         )
     return "".join(parts)
+
+
+def _selectable_route_svg(route) -> str:
+    points = " ".join(f"{p.x},{p.y}" for p in route.points)
+    edge_ids = ",".join(route.semantic_edge_ids)
+    entity_id = route_entity_id(route.role)
+    css = _route_class(route.role)
+    return (
+        f'<polyline class="{css}" points="{points}" '
+        f'data-semantic-edge-ids="{html.escape(edge_ids)}" '
+        f'data-route-role="{html.escape(route.role)}"/>'
+        f'<polyline class="route-hit" points="{points}" '
+        f'data-route-entity-id="{html.escape(entity_id)}" '
+        f'onclick="selectEntity(\'{html.escape(entity_id)}\')" '
+        f'aria-label="Select {html.escape(entity_id)}"/>'
+    )
 
 
 def render_clean_pid_html(
@@ -58,6 +75,9 @@ def render_clean_pid_html(
             item.model_dump(mode="json") if hasattr(item, "model_dump") else item
             for item in (publication_stages or [])
         ]
+    ).replace("</", "<\\/")
+    inspection_payload = json.dumps(
+        build_inspection_graph(model, dossiers or {}, plan.routes)
     ).replace("</", "<\\/")
 
     line_labels = {
@@ -110,7 +130,9 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .green{{color:#166534}} .amber{{color:#92400e}} .red{{color:#991b1b}}
 .muted{{font-size:11px;color:#666}} .section{{font-size:10px;font-weight:700;text-transform:uppercase;margin-top:14px}}
 .metric{{font-size:11px;padding:5px 0;border-bottom:1px solid #e5e7eb}}
-.selectable{{cursor:pointer}} .selectable:hover .sym{{stroke:#1d4ed8;stroke-width:2.2}}
+.selectable{{cursor:pointer}} .selectable:hover .sym,.selectable:hover .inst{{stroke:#1d4ed8;stroke-width:2.2}}
+.route-hit{{fill:none;stroke:rgba(37,99,235,0);stroke-width:12;pointer-events:stroke;cursor:pointer}}
+.route-hit:hover{{stroke:rgba(37,99,235,.16)}}
 .tabs{{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0}}
 .tab{{font-size:10px;padding:5px 7px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer}}
 .tab.active{{background:#1f2937;color:#fff}}
@@ -147,6 +169,14 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 .property-name{{padding:6px 7px;background:#f8fafc;border-right:1px solid #e5e7eb}}
 .property-value{{padding:6px 7px;word-break:break-word}}
 .property-source{{grid-column:1 / 3;padding:4px 7px 6px;color:#64748b;font-size:9px;border-top:1px dotted #e2e8f0}}
+.node-group{{border:1px solid #cbd5e1;margin:7px 0;background:#fff}}
+.node-group-title{{background:#e2e8f0;font:700 10px Arial;padding:6px 8px;text-transform:uppercase}}
+.node-list{{display:flex;flex-wrap:wrap;gap:5px;padding:7px}}
+.node-link{{font-size:9px;padding:5px 7px;border:1px solid #94a3b8;background:#fff;border-radius:999px;cursor:pointer;text-align:left}}
+.node-link:hover{{background:#eff6ff;border-color:#3b82f6}}
+.node-rel{{font-size:8px;color:#64748b;margin-left:4px}}
+.path-flow{{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:7px}}
+.path-arrow{{color:#64748b}}
 #propertiesContent{{display:none}}
 </style>
 </head>
@@ -164,7 +194,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <line class="thin" x1="760" y1="590" x2="760" y2="666"/>
 <line class="thin" x1="930" y1="590" x2="930" y2="666"/>
 
-{''.join(_route_svg(route) for route in plan.routes)}
+{''.join(_selectable_route_svg(route) for route in plan.routes)}
 
 <!-- Separator -->
 <g class="selectable" data-object-id="EQ-V101" onclick="selectObject('EQ-V101')">
