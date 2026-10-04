@@ -131,10 +131,12 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 </g>
 
 <!-- Protection -->
+<g class="selectable" data-object-id="VLV-PSV101" onclick="selectObject('VLV-PSV101')">
 <path class="sym" d="M223 166 L247 166 L235 146 Z"/>
 <line class="sym" x1="235" y1="146" x2="235" y2="128"/>
 <line class="sym" x1="227" y1="128" x2="243" y2="128"/>
 <text x="262" y="151" class="txt">PSV-101</text>
+</g>
 <path class="sym" d="M222 73 H242 L250 80 L242 87 H222 Z"/>
 <path class="sym" d="M128 139 L145 150 L128 161 Z M162 139 L145 150 L162 161 Z"/>
 <path class="sym" d="M68 143 H88 L96 150 L88 157 H68 Z"/>
@@ -142,18 +144,20 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <path class="sym" d="M188 562 H202 L209 569 L202 576 H188 Z"/>
 
 <!-- Vessel instruments -->
-{_bubble(105,255,"PT","PT-101")}
+<g class="selectable" data-object-id="INS-PT101" onclick="selectObject('INS-PT101')">{_bubble(105,255,"PT","PT-101")}</g>
 {_bubble(105,310,"PI","PI-101")}
-{_bubble(315,290,"LT","LT-101")}
+<g class="selectable" data-object-id="INS-LT101" onclick="selectObject('INS-LT101')">{_bubble(315,290,"LT","LT-101")}</g>
 {_bubble(315,340,"LI","LI-101")}
-{_bubble(415,205,"LIC","LIC-101")}
+<g class="selectable" data-object-id="INS-LIC101" onclick="selectObject('INS-LIC101')">{_bubble(415,205,"LIC","LIC-101")}</g>
 
 <!-- LCV -->
+<g class="selectable" data-object-id="VLV-LCV101" onclick="selectObject('VLV-LCV101')">
 <path class="sym" d="M376 419 L395 430 L376 441 Z M414 419 L395 430 L414 441 Z"/>
 <line class="sym" x1="395" y1="430" x2="395" y2="407"/>
 <path class="sym" d="M383 407 Q395 390 407 407"/>
 <line class="sym" x1="383" y1="407" x2="407" y2="407"/>
 <text x="395" y="458" text-anchor="middle" class="txt">LCV-101</text>
+</g>
 
 <!-- Pump suction / pump -->
 <path class="sym" d="M518 419 L535 430 L518 441 Z M552 419 L535 430 L552 441 Z"/>
@@ -178,9 +182,9 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <path class="sym" d="M1046 423 H1066 L1076 430 L1066 437 H1046 Z"/>
 
 <!-- Minimum-flow control -->
-{_bubble(700,215,"FT","FT-101")}
+<g class="selectable" data-object-id="INS-FT101" onclick="selectObject('INS-FT101')">{_bubble(700,215,"FT","FT-101")}</g>
 <line class="impulse" x1="700" y1="229" x2="700" y2="255"/>
-{_bubble(820,180,"FIC","FIC-101")}
+<g class="selectable" data-object-id="INS-FIC101" onclick="selectObject('INS-FIC101')">{_bubble(820,180,"FIC","FIC-101")}</g>
 <g class="selectable" data-object-id="VLV-FCV101" onclick="selectObject('VLV-FCV101')">
 <path class="sym" d="M501 244 L520 255 L501 266 Z M539 244 L520 255 L539 266 Z"/>
 <line class="sym" x1="520" y1="255" x2="520" y2="232"/>
@@ -203,7 +207,7 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <aside class="side">
 <div class="object-head">
 <h3 id="objectTag">Digital BDEP Object</h3>
-<div id="objectMeta" class="muted">Click V-101, P-101 or FCV-101</div>
+<div id="objectMeta" class="muted">Click equipment, PSV, control valves or key instruments</div>
 </div>
 <div class="view-switch">
 <button id="tabsModeBtn" class="view-btn active" onclick="setInspectorMode('tabs')">Tabs</button>
