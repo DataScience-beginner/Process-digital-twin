@@ -60,6 +60,94 @@ def _structured_value(value: Any) -> str:
     return html.escape(_fmt(value))
 
 
+def _trace_html(trace: dict[str, Any] | None) -> str:
+    if not isinstance(trace, dict):
+        return ""
+
+    parts = ['<section class="trace"><h4>Full Calculation Trace</h4>']
+    parts.append(
+        '<div class="trace-head">'
+        f'<div><b>Trace ID:</b> {html.escape(_fmt(trace.get("trace_id")))}</div>'
+        f'<div><b>Type:</b> {html.escape(_fmt(trace.get("calculation_type")))}</div>'
+        f'<div><b>Service version:</b> {html.escape(_fmt(trace.get("service_version")))}</div>'
+        f'<div><b>Qualification:</b> {html.escape(_fmt(trace.get("qualification")))}</div>'
+        '</div>'
+    )
+
+    sources = trace.get("input_sources") or []
+    if sources:
+        keys = []
+        for row in sources:
+            for key in row:
+                if key not in keys:
+                    keys.append(key)
+        parts.append(
+            '<h5>Input Traceability</h5>'
+            + _simple_table(sources, [(key, key.replace("_", " ").title()) for key in keys])
+        )
+
+    steps = trace.get("steps") or []
+    if steps:
+        parts.append('<h5>Equation / Substitution Steps</h5>')
+        for step in steps:
+            parts.append(
+                '<div class="trace-step">'
+                f'<div class="trace-step-no">Step {html.escape(_fmt(step.get("step")))}</div>'
+                f'<div class="trace-step-title">{html.escape(_fmt(step.get("title")))}</div>'
+                f'<div><b>Equation:</b> <code>{html.escape(_fmt(step.get("equation")))}</code></div>'
+                f'<div><b>Substitution:</b> <code>{html.escape(_fmt(step.get("substitution")))}</code></div>'
+                f'<div><b>Result:</b> {html.escape(_fmt(step.get("result")))} {html.escape(_fmt(step.get("unit"))) if step.get("unit") else ""}</div>'
+                + (
+                    f'<div class="trace-note"><b>Note:</b> {html.escape(_fmt(step.get("note")))}</div>'
+                    if step.get("note") else ""
+                )
+                + '</div>'
+            )
+
+    selections = trace.get("selection_checks") or []
+    if selections:
+        keys = []
+        for row in selections:
+            for key in row:
+                if key not in keys:
+                    keys.append(key)
+        parts.append(
+            '<h5>Candidate / Selection Checks</h5>'
+            + _simple_table(selections, [(key, key.replace("_", " ").title()) for key in keys])
+        )
+
+    validations = trace.get("validation_checks") or []
+    if validations:
+        parts.append(
+            '<h5>Validation Checks</h5>'
+            + _simple_table(
+                validations,
+                [
+                    ("check", "Check"),
+                    ("actual", "Actual"),
+                    ("criterion", "Criterion"),
+                    ("result", "Result"),
+                ],
+            )
+        )
+
+    for title, key in [
+        ("Assumptions", "assumptions"),
+        ("Limitations / Qualification Gaps", "limitations"),
+        ("Downstream Consumers", "downstream_consumers"),
+    ]:
+        rows = trace.get(key) or []
+        if rows:
+            parts.append(
+                f'<h5>{html.escape(title)}</h5><ul class="trace-list">'
+                + "".join(f"<li>{html.escape(_fmt(item))}</li>" for item in rows)
+                + "</ul>"
+            )
+
+    parts.append("</section>")
+    return "".join(parts)
+
+
 def _calc_detail(record) -> str:
     meta = record.metadata or {}
     detail = meta.get("calculation_detail")
@@ -106,6 +194,8 @@ def _calc_detail(record) -> str:
             + html.escape(_fmt(detail.get("selection_reason")))
             + '</div>'
         )
+
+    parts.append(_trace_html(detail.get("trace")))
 
     if detail.get("governing_case") or detail.get("governing_reason"):
         parts.append(
@@ -219,6 +309,15 @@ th{{background:#f1f5f9;position:sticky;top:0}} .tablewrap{{overflow:auto;max-hei
 .calcgrid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}} .kv td:first-child{{width:55%;background:#f8fafc;font-weight:600}}
 .governing{{background:#fffbeb;border:1px solid #fde68a;padding:8px;margin:8px 0;font-size:10px;line-height:1.45}}
 .method{{font-size:10px;background:#f8fafc;border:1px solid #e5e7eb;padding:7px;margin-top:8px}}
+.trace{{border:2px solid #bfdbfe;background:#f8fbff;padding:10px;margin:10px 0}}
+.trace h5{{font-size:10px;margin:10px 0 6px;color:#1e3a5f;text-transform:uppercase}}
+.trace-head{{display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:9px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px}}
+.trace-step{{border-left:3px solid #60a5fa;background:#fff;padding:8px;margin:7px 0;font-size:10px;line-height:1.5}}
+.trace-step-no{{font-size:8px;color:#64748b;text-transform:uppercase}}
+.trace-step-title{{font-weight:700;margin-bottom:4px}}
+.trace-step code{{white-space:normal;font-size:9px}}
+.trace-note{{color:#475569;margin-top:4px}}
+.trace-list{{font-size:10px;line-height:1.45;margin-top:4px}}
 .empty{{font-size:10px;color:#666}}
 @media(max-width:800px){{.calcgrid{{grid-template-columns:1fr}}}}
 </style>
