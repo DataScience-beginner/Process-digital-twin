@@ -16,7 +16,7 @@ from .persistence import database_summary, ensure_demo_seeded, load_object_dossi
 from .thread_service import DESIGN_CASES, build_object_dossier
 from .simulation import publish_demo_simulation
 
-app = FastAPI(title="Digital BDEP Prototype", version="0.5.3")
+app = FastAPI(title="Digital BDEP Prototype", version="0.6.1")
 
 
 @app.get("/api/plant")
