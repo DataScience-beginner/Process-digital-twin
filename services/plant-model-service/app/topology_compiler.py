@@ -182,7 +182,7 @@ def compile_engineering_topology(
         ModuleExpansion(
             module_id="PUMP_SUCTION_STANDARD_01",
             created_object_ids=sorted(
-                pump_object_ids & {"NOZ-P101-SUC", "VLV-XV101"}
+                pump_object_ids & {"NOZ-P101-SUC", "VLV-XV101", "INS-PI101S"}
             ),
             created_connection_ids=sorted(
                 pump_connection_ids & {"C-LIQ-01", "C-LIQ-02", "C-SUC-02"}
@@ -195,7 +195,7 @@ def compile_engineering_topology(
             module_id="PUMP_DISCHARGE_STANDARD_01",
             created_object_ids=sorted(
                 pump_object_ids
-                & {"NOZ-P101-DIS", "JUNC-P101-DIS", "VLV-NRV101", "VLV-XV102", "BOUND-PRODUCT"}
+                & {"NOZ-P101-DIS", "JUNC-P101-DIS", "VLV-NRV101", "VLV-XV102", "BOUND-PRODUCT", "INS-PI101D"}
             ),
             created_connection_ids=sorted(
                 pump_connection_ids & {"C-DIS-01", "C-DIS-02", "C-DIS-03", "C-DIS-04"}
