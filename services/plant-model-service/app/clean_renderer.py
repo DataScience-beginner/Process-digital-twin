@@ -153,7 +153,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <body>
 <header>
 <div><strong>Digital BDEP — Engineering View</strong><div class="muted">Staged publishing · connected P&ID + object-centric Digital Thread</div></div>
-<nav><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
+<nav><a href="/dashboard">Dashboard</a><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
 </header>
 <div class="publishbar" id="publishbar"></div>
 <main>
