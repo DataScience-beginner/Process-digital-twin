@@ -690,6 +690,152 @@ def _trace(
     }
 
 
+_DEMO_PSV_ORIFICE_AREAS_IN2 = [
+    ("D", 0.110),
+    ("E", 0.196),
+    ("F", 0.307),
+    ("G", 0.503),
+    ("H", 0.785),
+    ("J", 1.287),
+    ("K", 1.838),
+    ("L", 2.853),
+    ("M", 3.600),
+    ("N", 4.340),
+    ("P", 6.380),
+    ("Q", 11.050),
+    ("R", 16.000),
+    ("T", 26.000),
+]
+
+
+def _psv_demo_vapor_sizing(session: Session) -> dict[str, Any]:
+    """Deterministic demo vapor-relief sizing.
+
+    This is deliberately transparent and self-contained so the viewer can show
+    every step. It is not a substitute for the company's qualified relief
+    calculation service or licensed standard implementation.
+    """
+    maximum = publish_demo_simulation("CASE-MAX")
+    vapor = next(item for item in maximum.streams if item.id == "STR-S101")
+
+    set_barg = float(_criterion(session, "DBC-PSV-SET-PRESSURE"))
+    accumulation_pct = float(_criterion(session, "DBC-PSV-ACCUMULATION"))
+    atmospheric_bara = float(_criterion(session, "DBC-ATMOSPHERIC-PRESSURE"))
+    relieving_temp_c = float(_criterion(session, "DBC-PSV-RELIEVING-TEMP"))
+    molecular_weight = float(_criterion(session, "DBC-PSV-VAPOR-MW"))
+    heat_capacity_ratio = float(_criterion(session, "DBC-PSV-VAPOR-K"))
+    compressibility = float(_criterion(session, "DBC-PSV-VAPOR-Z"))
+    kd = float(_criterion(session, "DBC-PSV-KD"))
+    kb = float(_criterion(session, "DBC-PSV-KB"))
+    kc = float(_criterion(session, "DBC-PSV-KC"))
+    backpressure_bara = float(_criterion(session, "DBC-PSV-BACKPRESSURE"))
+
+    relieving_pressure_barg = set_barg * (1.0 + accumulation_pct / 100.0)
+    relieving_pressure_bara = relieving_pressure_barg + atmospheric_bara
+    relieving_pressure_pa = relieving_pressure_bara * 100000.0
+    relieving_temp_k = relieving_temp_c + 273.15
+
+    # Blocked-vapor-outlet demo load: maximum simulated vapor generation/outlet
+    # rate. The full feed rate is retained in the scenario register but is not
+    # silently used as a vapor load.
+    relief_load_tph = float(vapor.mass_flow)
+    relief_load_kg_s = relief_load_tph * 1000.0 / 3600.0
+
+    universal_gas_constant = 8314.462618  # J/(kmol.K)
+    specific_gas_constant = universal_gas_constant / molecular_weight
+    critical_pressure_ratio = (
+        2.0 / (heat_capacity_ratio + 1.0)
+    ) ** (heat_capacity_ratio / (heat_capacity_ratio - 1.0))
+    actual_pressure_ratio = backpressure_bara / relieving_pressure_bara
+    choked = actual_pressure_ratio <= critical_pressure_ratio
+    if not choked:
+        raise PublicationBlocked(
+            "Demo PSV vapor sizing currently supports choked-flow cases only. "
+            "Backpressure ratio exceeds the critical pressure ratio."
+        )
+
+    ideal_mass_flux = relieving_pressure_pa * math.sqrt(
+        heat_capacity_ratio
+        / (compressibility * specific_gas_constant * relieving_temp_k)
+        * (
+            2.0 / (heat_capacity_ratio + 1.0)
+        ) ** (
+            (heat_capacity_ratio + 1.0)
+            / (heat_capacity_ratio - 1.0)
+        )
+    )
+    corrected_mass_flux = ideal_mass_flux * kd * kb * kc
+    required_area_m2 = relief_load_kg_s / corrected_mass_flux
+    required_area_mm2 = required_area_m2 * 1_000_000.0
+    required_area_in2 = required_area_m2 / (0.0254**2)
+
+    selection_checks = []
+    selected_letter = None
+    selected_area_in2 = None
+    for letter, area_in2 in _DEMO_PSV_ORIFICE_AREAS_IN2:
+        result = "PASS" if area_in2 >= required_area_in2 else "FAIL"
+        selection_checks.append(
+            {
+                "orifice": letter,
+                "area_in2": area_in2,
+                "area_mm2": round(area_in2 * 645.16, 1),
+                "required_area_in2": round(required_area_in2, 4),
+                "margin_in2": round(area_in2 - required_area_in2, 4),
+                "result": result,
+            }
+        )
+        if selected_letter is None and result == "PASS":
+            selected_letter = letter
+            selected_area_in2 = area_in2
+
+    if selected_letter is None or selected_area_in2 is None:
+        raise PublicationBlocked(
+            "Required demo relief area exceeds the largest configured standard "
+            "orifice. Multiple-valve or larger-valve review is required."
+        )
+
+    selected_area_m2 = selected_area_in2 * 0.0254**2
+    selected_capacity_tph = (
+        corrected_mass_flux * selected_area_m2 * 3600.0 / 1000.0
+    )
+    area_utilization_pct = required_area_in2 / selected_area_in2 * 100.0
+
+    return {
+        "scenario": "Blocked vapor outlet",
+        "relief_load_tph": relief_load_tph,
+        "relief_load_kg_s": relief_load_kg_s,
+        "set_pressure_barg": set_barg,
+        "accumulation_pct": accumulation_pct,
+        "relieving_pressure_barg": relieving_pressure_barg,
+        "atmospheric_pressure_bara": atmospheric_bara,
+        "relieving_pressure_bara": relieving_pressure_bara,
+        "backpressure_bara": backpressure_bara,
+        "actual_pressure_ratio": actual_pressure_ratio,
+        "critical_pressure_ratio": critical_pressure_ratio,
+        "choked": choked,
+        "relieving_temp_c": relieving_temp_c,
+        "relieving_temp_k": relieving_temp_k,
+        "molecular_weight": molecular_weight,
+        "heat_capacity_ratio": heat_capacity_ratio,
+        "compressibility": compressibility,
+        "specific_gas_constant": specific_gas_constant,
+        "kd": kd,
+        "kb": kb,
+        "kc": kc,
+        "ideal_mass_flux_kg_m2_s": ideal_mass_flux,
+        "corrected_mass_flux_kg_m2_s": corrected_mass_flux,
+        "required_area_m2": required_area_m2,
+        "required_area_mm2": required_area_mm2,
+        "required_area_in2": required_area_in2,
+        "selected_orifice": selected_letter,
+        "selected_area_in2": selected_area_in2,
+        "selected_area_mm2": selected_area_in2 * 645.16,
+        "selected_capacity_tph": selected_capacity_tph,
+        "area_utilization_pct": area_utilization_pct,
+        "selection_checks": selection_checks,
+    }
+
+
 def publish_process(session: Session) -> PublicationResult:
     _require_dependencies(session, PublishStage.PROCESS)
     n = _process_numbers(session)
