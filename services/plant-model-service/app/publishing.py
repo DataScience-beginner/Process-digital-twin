@@ -374,6 +374,214 @@ def _process_numbers(session: Session) -> dict[str, float]:
     }
 
 
+_STANDARD_NPS_IN = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+
+
+def _stream_case_table(stream_id: str) -> list[dict[str, Any]]:
+    rows = []
+    for design_case_id, label in [
+        ("CASE-NORMAL", "Normal"),
+        ("CASE-MAX", "Maximum"),
+        ("CASE-TURNDOWN", "Turndown"),
+    ]:
+        publication = publish_demo_simulation(design_case_id)
+        stream = next(item for item in publication.streams if item.id == stream_id)
+        rows.append(
+            {
+                "case": label,
+                "design_case_id": design_case_id,
+                "simulation_case_id": publication.simulation_case_id,
+                "stream_number": stream.stream_number,
+                "mass_flow_tph": float(stream.mass_flow),
+                "pressure_barg": float(stream.pressure),
+                "temperature_degC": float(stream.temperature),
+                "density_kgm3": float(stream.density) if stream.density is not None else None,
+            }
+        )
+    return rows
+
+
+def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) -> dict[str, float]:
+    q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
+    required_d_m = math.sqrt(4.0 * q_m3s / (math.pi * max_velocity_ms))
+    required_in = required_d_m / 0.0254
+    selected = next((size for size in _STANDARD_NPS_IN if size >= required_in), _STANDARD_NPS_IN[-1])
+    selected_d_m = selected * 0.0254
+    selected_area = math.pi * selected_d_m**2 / 4.0
+    selected_velocity = q_m3s / selected_area
+    return {
+        "flow_m3s": q_m3s,
+        "required_diameter_m": required_d_m,
+        "required_diameter_in": required_in,
+        "selected_nps_in": selected,
+        "selected_velocity_ms": selected_velocity,
+    }
+
+
+def _velocity_for_case(flow_tph: float, density_kgm3: float, nps_in: float) -> float:
+    q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
+    diameter_m = nps_in * 0.0254
+    area = math.pi * diameter_m**2 / 4.0
+    return q_m3s / area
+
+
+def _line_number(
+    *,
+    nps_in: float,
+    fluid_code: str,
+    sequence: str,
+    piping_class: str,
+) -> str:
+    size_text = str(int(nps_in)) if float(nps_in).is_integer() else str(nps_in)
+    return f'{size_text}"-{fluid_code}-{sequence}-{piping_class}'
+
+
+def _line_sizing_records(session: Session, n: dict[str, float]) -> list[dict[str, Any]]:
+    fluid_code = str(_criterion(session, "DBC-LINE-FLUID-CODE"))
+    piping_class = str(_criterion(session, "DBC-LINE-PIPING-CLASS"))
+    suction_limit = float(_criterion(session, "DBC-LINE-SUCTION-VEL"))
+    discharge_limit = float(_criterion(session, "DBC-LINE-DISCHARGE-VEL"))
+    recycle_limit = float(_criterion(session, "DBC-LINE-RECYCLE-VEL"))
+
+    max_case = publish_demo_simulation("CASE-MAX")
+    max_liquid = next(item for item in max_case.streams if item.id == "STR-S102")
+    density = float(max_liquid.density)
+
+    suction = _select_nps(max_liquid.mass_flow, density, suction_limit)
+    discharge = _select_nps(max_liquid.mass_flow, density, discharge_limit)
+
+    min_flow_fraction = float(_criterion(session, "DBC-PUMP-MIN-FLOW-FRACTION")) / 100.0
+    recycle_design_tph = n["pump_rated_flow_tph"] * min_flow_fraction
+    recycle = _select_nps(recycle_design_tph, density, recycle_limit)
+
+    case_rows = _stream_case_table("STR-S102")
+    suction_cases = [
+        {
+            **row,
+            "velocity_ms": round(
+                _velocity_for_case(row["mass_flow_tph"], row["density_kgm3"], suction["selected_nps_in"]),
+                3,
+            ),
+        }
+        for row in case_rows
+    ]
+    discharge_cases = [
+        {
+            **row,
+            "velocity_ms": round(
+                _velocity_for_case(row["mass_flow_tph"], row["density_kgm3"], discharge["selected_nps_in"]),
+                3,
+            ),
+        }
+        for row in case_rows
+    ]
+    recycle_cases = [
+        {
+            **row,
+            "required_recycle_tph": round(max(recycle_design_tph - row["mass_flow_tph"], 0.0), 3),
+            "velocity_ms": round(
+                _velocity_for_case(
+                    max(recycle_design_tph - row["mass_flow_tph"], 0.0),
+                    row["density_kgm3"],
+                    recycle["selected_nps_in"],
+                ),
+                3,
+            ),
+        }
+        for row in case_rows
+    ]
+
+    return [
+        {
+            "record_id": "LINE-1102-SIZING",
+            "service": "V-101 liquid outlet / P-101 suction",
+            "stream_number": "1102",
+            "simulator_stream_id": "S-102",
+            "sequence": "1102",
+            "line_number": _line_number(
+                nps_in=suction["selected_nps_in"],
+                fluid_code=fluid_code,
+                sequence="1102",
+                piping_class=piping_class,
+            ),
+            "criterion_velocity_ms": suction_limit,
+            "selected_nps_in": suction["selected_nps_in"],
+            "required_diameter_in": suction["required_diameter_in"],
+            "design_velocity_ms": suction["selected_velocity_ms"],
+            "case_results": suction_cases,
+            "object_ids": ["EQ-V101", "EQ-P101"],
+            "governing_case": "Maximum",
+            "governing_reason": "Maximum case has the highest published liquid flow in stream 1102.",
+        },
+        {
+            "record_id": "LINE-1103-SIZING",
+            "service": "P-101 discharge to downstream process",
+            "stream_number": "1103",
+            "simulator_stream_id": "S-103",
+            "sequence": "1103",
+            "line_number": _line_number(
+                nps_in=discharge["selected_nps_in"],
+                fluid_code=fluid_code,
+                sequence="1103",
+                piping_class=piping_class,
+            ),
+            "criterion_velocity_ms": discharge_limit,
+            "selected_nps_in": discharge["selected_nps_in"],
+            "required_diameter_in": discharge["required_diameter_in"],
+            "design_velocity_ms": discharge["selected_velocity_ms"],
+            "case_results": discharge_cases,
+            "object_ids": ["EQ-P101"],
+            "governing_case": "Maximum",
+            "governing_reason": "Maximum case has the highest published pump discharge flow.",
+        },
+        {
+            "record_id": "LINE-1190-SIZING",
+            "service": "P-101 minimum-flow recycle to V-101",
+            "stream_number": None,
+            "simulator_stream_id": None,
+            "sequence": "1190",
+            "line_number": _line_number(
+                nps_in=recycle["selected_nps_in"],
+                fluid_code=fluid_code,
+                sequence="1190",
+                piping_class=piping_class,
+            ),
+            "criterion_velocity_ms": recycle_limit,
+            "selected_nps_in": recycle["selected_nps_in"],
+            "required_diameter_in": recycle["required_diameter_in"],
+            "design_velocity_ms": recycle["selected_velocity_ms"],
+            "design_flow_tph": recycle_design_tph,
+            "case_results": recycle_cases,
+            "object_ids": ["EQ-P101", "VLV-FCV101", "EQ-V101"],
+            "governing_case": "Minimum-flow design case",
+            "governing_reason": "Recycle line is sized for the minimum-flow protection duty rather than the normal process stream flow.",
+        },
+    ]
+
+
+def _calculation_detail(
+    *,
+    inputs: list[dict[str, Any]],
+    criteria: list[dict[str, Any]],
+    case_results: list[dict[str, Any]],
+    governing_case: str,
+    governing_reason: str,
+    outputs: list[dict[str, Any]],
+    method: str,
+) -> dict[str, Any]:
+    return {
+        "calculation_detail": {
+            "inputs": inputs,
+            "criteria": criteria,
+            "case_results": case_results,
+            "governing_case": governing_case,
+            "governing_reason": governing_reason,
+            "outputs": outputs,
+            "method": method,
+        }
+    }
+
+
 def publish_process(session: Session) -> PublicationResult:
     _require_dependencies(session, PublishStage.PROCESS)
     n = _process_numbers(session)
