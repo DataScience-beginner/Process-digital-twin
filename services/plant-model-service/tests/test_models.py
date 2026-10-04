@@ -1,46 +1,33 @@
 import pytest
 from pydantic import ValidationError
 
-from app.configurations import (
-    demo_vessel_pump_model,
-    standard_centrifugal_pump,
-    standard_vertical_separator,
-)
-from app.models import Connection, ConnectionEndpoint, PlantModel
+from app.configurations import demo_pump_installation_model
+from app.models import PlantModel
 
 
-def test_demo_model_is_valid():
-    model = demo_vessel_pump_model()
-    assert model.connections[0].source.port == "LIQUID_OUTLET"
-    assert model.connections[0].target.port == "SUCTION"
+def test_model_roundtrip():
+    model = demo_pump_installation_model()
+    restored = PlantModel.model_validate_json(model.model_dump_json())
+    assert restored.project_id == model.project_id
+    assert len(restored.objects) == len(model.objects)
 
 
-def test_factories_have_expected_ports():
-    vessel = standard_vertical_separator(object_id="V1", tag="V-1")
-    pump = standard_centrifugal_pump(object_id="P1", tag="P-1")
-    assert vessel.port("LIQUID_OUTLET").direction == "out"
-    assert pump.port("SUCTION").direction == "in"
+def test_unknown_object_fails():
+    data = demo_pump_installation_model().model_dump()
+    data["connections"][0]["source"]["object_id"] = "UNKNOWN"
+    with pytest.raises(ValidationError, match="unknown object"):
+        PlantModel.model_validate(data)
 
 
 def test_unknown_port_fails():
-    model = demo_vessel_pump_model().model_dump()
-    model["connections"][0]["target"]["port"] = "NOT_A_PORT"
+    data = demo_pump_installation_model().model_dump()
+    data["connections"][0]["source"]["port"] = "NOT_A_PORT"
     with pytest.raises(ValidationError, match="unknown port"):
-        PlantModel.model_validate(model)
+        PlantModel.model_validate(data)
 
 
-def test_wrong_direction_fails():
-    vessel = standard_vertical_separator(object_id="V1", tag="V-1")
-    pump = standard_centrifugal_pump(object_id="P1", tag="P-1")
-    with pytest.raises(ValidationError, match="source port must allow output"):
-        PlantModel(
-            project_id="X",
-            equipment=[vessel, pump],
-            connections=[
-                Connection(
-                    id="C1",
-                    source=ConnectionEndpoint(object_id="P1", port="SUCTION"),
-                    target=ConnectionEndpoint(object_id="V1", port="FEED_INLET"),
-                )
-            ],
-        )
+def test_duplicate_tags_fail():
+    data = demo_pump_installation_model().model_dump()
+    data["objects"][1]["tag"] = data["objects"][0]["tag"]
+    with pytest.raises(ValidationError, match="Duplicate object tags"):
+        PlantModel.model_validate(data)
