@@ -113,9 +113,46 @@ header a{{margin-left:14px;color:#174a77;text-decoration:none;font-size:12px}}
 .pubstatus{{font-size:9px;padding:3px 6px;border-radius:999px;background:#e5e7eb;color:#374151}}
 .pubstatus.published{{background:#dcfce7;color:#166534}}
 .pubmsg{{font-size:10px;margin-left:auto;color:#475569}}
-main{{display:grid;grid-template-columns:minmax(900px,1fr) 430px;gap:12px;padding:12px}}
+main.workspace-grid{{display:grid;grid-template-columns:270px minmax(650px,1fr) 430px;gap:10px;padding:10px;align-items:start}}
+.workspace-grid.left-hidden{{grid-template-columns:minmax(650px,1fr) 430px}}
+.workspace-grid.left-hidden .left-sidebar{{display:none}}
+.workspace-grid.right-hidden{{grid-template-columns:270px minmax(650px,1fr)}}
+.workspace-grid.right-hidden .right-sidebar{{display:none}}
+.workspace-grid.left-hidden.right-hidden{{grid-template-columns:minmax(650px,1fr)}}
+.left-sidebar,.side{{background:#fff;border:1px solid #aaa;padding:12px}}
+.left-sidebar,.right-sidebar{{position:sticky;top:8px;max-height:calc(100vh - 20px);overflow:auto}}
+.center-workspace{{min-width:0}}
+.canvas-toolbar{{background:#fff;border:1px solid #aaa;border-bottom:0;padding:7px 8px;display:flex;gap:5px;align-items:center;flex-wrap:wrap}}
+.canvas-btn,.workspace-btn,.tool-btn{{font-size:9px;padding:6px 8px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
+.canvas-btn.active,.workspace-btn.active{{background:#0f172a;color:#fff}}
+.canvas-title{{font-size:10px;font-weight:700;margin-right:auto}}
 .sheet{{background:#fff;border:1px solid #777;overflow:auto}}
-.side{{background:#fff;border:1px solid #aaa;padding:14px}}
+.embed-pane{{display:none;background:#fff;border:1px solid #777;height:760px}}
+.embed-pane iframe{{width:100%;height:100%;border:0}}
+.workspace-section{{border-top:1px solid #dbe1e8;margin-top:10px;padding-top:9px}}
+.workspace-section:first-child{{border-top:0;margin-top:0;padding-top:0}}
+.workspace-heading{{font-size:9px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:6px;letter-spacing:.3px}}
+.workspace-nav{{display:grid;gap:4px}}
+.workspace-btn{{text-align:left;width:100%;box-sizing:border-box;text-decoration:none;color:#111}}
+.left-publish{{display:grid;grid-template-columns:1fr auto;gap:4px;padding:0;background:transparent;border:0}}
+.left-publish .pubbtn{{width:100%;text-align:left}}
+.left-publish .pubstatus{{align-self:center}}
+.left-publish .pubbtn.all{{grid-column:1 / 3}}
+.left-publish .pubmsg{{grid-column:1 / 3;margin-left:0;padding-top:4px}}
+.stencil-grid{{display:grid;grid-template-columns:1fr 1fr;gap:5px}}
+.stencil{{border:1px solid #94a3b8;background:#fff;border-radius:4px;padding:7px 5px;text-align:center;font-size:8px;cursor:grab;user-select:none}}
+.stencil:active{{cursor:grabbing}}
+.tool-grid{{display:grid;grid-template-columns:1fr 1fr;gap:5px}}
+.tool-btn{{font-size:8px}}
+.tool-btn.active{{background:#dbeafe;border-color:#3b82f6;color:#1e3a8a}}
+.tool-status{{font-size:8px;line-height:1.4;background:#f8fafc;border:1px solid #e2e8f0;padding:6px;margin-top:6px;color:#475569}}
+.draft-object{{cursor:move}}
+.draft-object .draft-shape{{fill:#fff7ed;stroke:#ea580c;stroke-width:1.5;stroke-dasharray:4 2}}
+.draft-object .draft-label{{font:700 8px Arial;fill:#9a3412}}
+.draft-connector{{fill:none;stroke:#ea580c;stroke-width:1.4;stroke-dasharray:5 3;cursor:pointer}}
+.draft-connector.signal-kind{{stroke:#2563eb;stroke-dasharray:7 4}}
+.draft-connector:hover{{stroke-width:2.4}}
+.change-json{{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:5px;font:9px monospace;max-height:420px;overflow:auto}}
 svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .border{{fill:none;stroke:#000;stroke-width:1.1}}
 .thin{{fill:none;stroke:#000;stroke-width:.7}}
@@ -184,6 +221,15 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 .path-flow{{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:7px}}
 .path-arrow{{color:#64748b}}
 #propertiesContent{{display:none}}
+@media(max-width:1180px){{
+ main.workspace-grid{{grid-template-columns:230px minmax(620px,1fr)}}
+ .right-sidebar{{position:static;grid-column:1 / -1;max-height:none}}
+}}
+@media(max-width:820px){{
+ main.workspace-grid{{display:block}}
+ .left-sidebar,.right-sidebar{{position:static;max-height:none;margin-bottom:8px}}
+ .canvas-toolbar{{position:sticky;top:0;z-index:15}}
+}}
 </style>
 </head>
 <body>
@@ -191,10 +237,87 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <div><strong>Digital BDEP — Engineering View</strong><div class="muted">Staged publishing · connected P&ID + object-centric Digital Thread</div></div>
 <nav><a href="/dashboard">Dashboard</a><a href="/hazop">HAZOP</a><a href="/summaries">Summaries</a><a href="/engineering-2">PID-002</a><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
 </header>
-<div class="publishbar" id="publishbar"></div>
-<main>
-<section class="sheet">
-<svg viewBox="0 0 1120 690">
+<main id="workspaceGrid" class="workspace-grid">
+<aside id="leftSidebar" class="left-sidebar">
+  <div class="workspace-section">
+    <div class="workspace-heading">Workspace</div>
+    <div class="workspace-nav">
+      <button class="workspace-btn active" data-canvas="pid1" onclick="switchCanvas('pid1',this)">P&ID 001 — Engineering</button>
+      <button class="workspace-btn" data-canvas="plant" onclick="switchCanvas('plant',this)">Plant Model / Digital Thread</button>
+      <button class="workspace-btn" data-canvas="pid2" onclick="switchCanvas('pid2',this)">P&ID 002 — Continuation</button>
+      <button class="workspace-btn" data-canvas="dashboard" onclick="switchCanvas('dashboard',this)">Project Dashboard</button>
+      <button class="workspace-btn" data-canvas="hazop" onclick="switchCanvas('hazop',this)">HAZOP</button>
+      <button class="workspace-btn" data-canvas="summaries" onclick="switchCanvas('summaries',this)">BDEP Summaries</button>
+      <button class="workspace-btn" data-canvas="configuration" onclick="switchCanvas('configuration',this)">Configuration Match</button>
+      <button class="workspace-btn" data-canvas="compiler" onclick="switchCanvas('compiler',this)">Compiler / Plant Data</button>
+    </div>
+  </div>
+  <div class="workspace-section">
+    <div class="workspace-heading">Publish Project Stages</div>
+    <div class="publishbar left-publish" id="publishbar"></div>
+  </div>
+  <div class="workspace-section">
+    <div class="workspace-heading">Discipline Inspector</div>
+    <div class="workspace-nav">
+      <button class="workspace-btn" onclick="focusInspector('design_basis')">Design Basis</button>
+      <button class="workspace-btn" onclick="focusInspector('process')">Process / Safety</button>
+      <button class="workspace-btn" onclick="focusInspector('calculations')">Full Calculations</button>
+      <button class="workspace-btn" onclick="focusInspector('instrumentation')">Instrumentation / DCS</button>
+      <button class="workspace-btn" onclick="focusInspector('mechanical')">Technical / Mechanical</button>
+      <button class="workspace-btn" onclick="focusInspector('electrical')">Electrical</button>
+      <button class="workspace-btn" onclick="focusInspector('cost')">Cost Estimate</button>
+      <button class="workspace-btn" onclick="focusInspector('epc_vendor')">Vendor / EPC</button>
+      <button class="workspace-btn" onclick="focusInspector('operations')">Operations</button>
+    </div>
+  </div>
+  <div class="workspace-section">
+    <div class="workspace-heading">Sketch / Stencil Palette</div>
+    <div class="stencil-grid">
+      <div class="stencil" draggable="true" data-stencil="vessel" ondragstart="stencilDragStart(event)">Vessel</div>
+      <div class="stencil" draggable="true" data-stencil="pump" ondragstart="stencilDragStart(event)">Pump</div>
+      <div class="stencil" draggable="true" data-stencil="exchanger" ondragstart="stencilDragStart(event)">Exchanger</div>
+      <div class="stencil" draggable="true" data-stencil="manual_valve" ondragstart="stencilDragStart(event)">Manual Valve</div>
+      <div class="stencil" draggable="true" data-stencil="control_valve" ondragstart="stencilDragStart(event)">Control Valve</div>
+      <div class="stencil" draggable="true" data-stencil="psv" ondragstart="stencilDragStart(event)">PSV</div>
+      <div class="stencil" draggable="true" data-stencil="instrument" ondragstart="stencilDragStart(event)">Instrument</div>
+      <div class="stencil" draggable="true" data-stencil="boundary" ondragstart="stencilDragStart(event)">Off-page / B.L.</div>
+    </div>
+    <div class="muted" style="font-size:8px;margin-top:5px">Drag onto P&ID 001. New items stay provisional until a controlled change set is prepared.</div>
+  </div>
+  <div class="workspace-section">
+    <div class="workspace-heading">Drafting Assistance</div>
+    <div class="tool-grid">
+      <button id="connectorBtn" class="tool-btn" onclick="toggleConnectorMode()">Guided Connector</button>
+      <button class="tool-btn" onclick="autoCorrectDrafts()">Auto-correct</button>
+      <button class="tool-btn" onclick="validateDrafts()">Validate Draft</button>
+      <button class="tool-btn" onclick="undoDraft()">Undo</button>
+      <button class="tool-btn" onclick="clearDrafts()">Clear Draft</button>
+      <button class="tool-btn" onclick="prepareChangeSet()">Prepare Change Set</button>
+    </div>
+    <div id="toolStatus" class="tool-status">Draft mode ready. Drop a stencil on the P&ID or start Guided Connector.</div>
+  </div>
+  <div class="workspace-section">
+    <div class="workspace-heading">Exports</div>
+    <div class="workspace-nav">
+      <a class="workspace-btn" href="/export/dexpi.xml">DEXPI XML</a>
+      <a class="workspace-btn" href="/export/visio.vdx">Visio VDX</a>
+      <a class="workspace-btn" href="/export/drawing.dxf">CAD DXF</a>
+      <a class="workspace-btn" href="/export/drawing.dwg">DWG Adapter</a>
+    </div>
+  </div>
+</aside>
+<section class="center-workspace">
+  <div class="canvas-toolbar">
+    <button class="canvas-btn" onclick="toggleLeftSidebar()">☰ Left</button>
+    <span id="canvasTitle" class="canvas-title">P&ID 001 — Engineering Canvas</span>
+    <button class="canvas-btn active" data-canvas="pid1" onclick="switchCanvas('pid1',this)">P&ID 001</button>
+    <button class="canvas-btn" data-canvas="plant" onclick="switchCanvas('plant',this)">Plant Model</button>
+    <button class="canvas-btn" data-canvas="pid2" onclick="switchCanvas('pid2',this)">P&ID 002</button>
+    <button class="canvas-btn" onclick="toggleRightSidebar()">Right ▣</button>
+  </div>
+  <div id="pidCanvasPane">
+    <section class="sheet">
+<svg id="pidCanvas" viewBox="0 0 1120 690" ondragover="canvasDragOver(event)" ondrop="canvasDrop(event)" onmousemove="draftMove(event)" onmouseup="draftMoveEnd(event)" onmouseleave="draftMoveEnd(event)">
 <rect class="border" x="24" y="24" width="1072" height="642"/>
 <line class="border" x1="24" y1="590" x2="1096" y2="590"/>
 <line class="thin" x1="760" y1="590" x2="760" y2="666"/>
@@ -294,6 +417,8 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 </g>
 
 {_annotation_svg(cleanup, line_labels)}
+<g id="draftConnectorLayer"></g>
+<g id="draftLayer"></g>
 
 <!-- Title block -->
 <text class="title" x="775" y="612">DIGITAL BDEP - P&ID</text>
@@ -303,8 +428,11 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <text class="txt" x="945" y="629">STATUS: {status}</text>
 <text class="txt" x="945" y="646">VIEW: ENGINEERING</text>
 </svg>
+    </section>
+  </div>
+  <div id="embedPane" class="embed-pane"><iframe id="workspaceFrame" title="Digital BDEP workspace view"></iframe></div>
 </section>
-<aside class="side">
+<aside id="rightSidebar" class="side right-sidebar">
 <div class="object-head">
 <h3 id="objectTag">Digital BDEP Object</h3>
 <div id="objectMeta" class="muted">Click any visible equipment, valve, instrument, boundary or line</div>
@@ -335,6 +463,13 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <div><button class="detail-btn" onclick="popOutDetail()">⧉ Pop out</button> <button class="dialog-close" onclick="document.getElementById('detailDialog').close()">Close</button></div>
 </div>
 <div class="dialog-body" id="dialogBody"></div>
+</dialog>
+<dialog id="changeDialog">
+<div class="dialog-head">
+<div><strong>Proposed Drawing / Plant Model Change Set</strong><div class="muted">Draft-only preview. Nothing is applied to the semantic plant model until explicitly promoted through the controlled change workflow.</div></div>
+<button class="dialog-close" onclick="document.getElementById('changeDialog').close()">Close</button>
+</div>
+<div class="dialog-body"><pre id="changeJson" class="change-json"></pre></div>
 </dialog>
 <script>
 const dossiers={dossier_payload};
