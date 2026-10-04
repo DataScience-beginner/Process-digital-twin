@@ -352,8 +352,7 @@ def database_summary(session: Session) -> dict[str, int]:
 
 
 def ensure_demo_seeded(engine) -> None:
-    """Create tables and seed only when the database is empty; never reset populated data."""
-    from sqlalchemy import select
+    """Create tables and seed demo data without discarding an existing populated project."""
     from .db_schema import Base
 
     Base.metadata.create_all(engine)
@@ -361,6 +360,27 @@ def ensure_demo_seeded(engine) -> None:
         existing = session.scalar(select(ProjectRow.id).limit(1))
     if existing is None:
         seed_demo_database(engine)
+        return
+
+    # Earlier demo DBs may predate the approved-configuration table. Add only
+    # missing configuration definitions so the matcher remains DB-backed.
+    with Session(engine) as session:
+        changed = False
+        for definition in APPROVED_CONFIGURATIONS:
+            if session.get(ProcessConfigurationRow, definition.id) is None:
+                session.add(
+                    ProcessConfigurationRow(
+                        id=definition.id,
+                        name=definition.name,
+                        version=definition.version,
+                        status=definition.status,
+                        definition_json=definition.model_dump(mode="json"),
+                        approved_by="Digital BDEP Demo Governance",
+                    )
+                )
+                changed = True
+        if changed:
+            session.commit()
 
 
 
