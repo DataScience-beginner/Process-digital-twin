@@ -612,146 +612,254 @@ def _line_number(
 def _line_sizing_records(session: Session, n: dict[str, float]) -> list[dict[str, Any]]:
     fluid_code = str(_criterion(session, "DBC-LINE-FLUID-CODE"))
     piping_class = str(_criterion(session, "DBC-LINE-PIPING-CLASS"))
+    roughness_mm = float(_criterion(session, "DBC-LINE-ROUGHNESS"))
+
     suction_limit = float(_criterion(session, "DBC-LINE-SUCTION-VEL"))
     discharge_limit = float(_criterion(session, "DBC-LINE-DISCHARGE-VEL"))
     recycle_limit = float(_criterion(session, "DBC-LINE-RECYCLE-VEL"))
+    suction_dp_limit = float(_criterion(session, "DBC-LINE-SUCTION-DP"))
+    discharge_dp_limit = float(_criterion(session, "DBC-LINE-DISCHARGE-DP"))
+    recycle_dp_limit = float(_criterion(session, "DBC-LINE-RECYCLE-DP"))
+    suction_length = float(_criterion(session, "DBC-LINE-SUCTION-EQLEN"))
+    discharge_length = float(_criterion(session, "DBC-LINE-DISCHARGE-EQLEN"))
+    recycle_length = float(_criterion(session, "DBC-LINE-RECYCLE-EQLEN"))
 
     max_case = publish_demo_simulation("CASE-MAX")
     max_liquid = next(item for item in max_case.streams if item.id == "STR-S102")
     density = float(max_liquid.density)
+    viscosity_cp = float(max_liquid.viscosity)
 
-    suction = _select_nps(max_liquid.mass_flow, density, suction_limit)
-    discharge = _select_nps(max_liquid.mass_flow, density, discharge_limit)
+    suction = _select_nps(
+        max_liquid.mass_flow,
+        density,
+        viscosity_cp,
+        max_velocity_ms=suction_limit,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=suction_length,
+        max_friction_dp_bar=suction_dp_limit,
+    )
+    discharge = _select_nps(
+        max_liquid.mass_flow,
+        density,
+        viscosity_cp,
+        max_velocity_ms=discharge_limit,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=discharge_length,
+        max_friction_dp_bar=discharge_dp_limit,
+    )
 
     min_flow_fraction = float(_criterion(session, "DBC-PUMP-MIN-FLOW-FRACTION")) / 100.0
     recycle_design_tph = n["pump_rated_flow_tph"] * min_flow_fraction
-    recycle = _select_nps(recycle_design_tph, density, recycle_limit)
+    recycle = _select_nps(
+        recycle_design_tph,
+        density,
+        viscosity_cp,
+        max_velocity_ms=recycle_limit,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=recycle_length,
+        max_friction_dp_bar=recycle_dp_limit,
+    )
 
     case_rows = _stream_case_table("STR-S102")
-    suction_cases = [
+
+    def selected_case_rows(selected: dict[str, Any], eq_length: float) -> list[dict[str, Any]]:
+        rows = []
+        for row in case_rows:
+            point = _hydraulic_for_case(
+                flow_tph=row["mass_flow_tph"],
+                density_kgm3=row["density_kgm3"],
+                viscosity_cp=row["viscosity_cp"],
+                nps_in=selected["selected_nps_in"],
+                roughness_mm=roughness_mm,
+                equivalent_length_m=eq_length,
+            )
+            rows.append(
+                {
+                    **row,
+                    "selected_nps_in": selected["selected_nps_in"],
+                    "internal_diameter_in": round(point["internal_diameter_in"], 4),
+                    "velocity_ms": round(point["velocity_ms"], 3),
+                    "reynolds": round(point["reynolds"], 0),
+                    "friction_factor": round(point["friction_factor"], 5),
+                    "friction_dp_bar": round(point["friction_dp_bar"], 4),
+                }
+            )
+        return rows
+
+    suction_cases = selected_case_rows(suction, suction_length)
+    discharge_cases = selected_case_rows(discharge, discharge_length)
+
+    recycle_cases = []
+    for row in case_rows:
+        required_recycle = max(recycle_design_tph - row["mass_flow_tph"], 0.0)
+        point = _hydraulic_for_case(
+            flow_tph=required_recycle,
+            density_kgm3=row["density_kgm3"],
+            viscosity_cp=row["viscosity_cp"],
+            nps_in=recycle["selected_nps_in"],
+            roughness_mm=roughness_mm,
+            equivalent_length_m=recycle_length,
+        )
+        recycle_cases.append(
+            {
+                **row,
+                "required_recycle_tph": round(required_recycle, 3),
+                "selected_nps_in": recycle["selected_nps_in"],
+                "internal_diameter_in": round(point["internal_diameter_in"], 4),
+                "velocity_ms": round(point["velocity_ms"], 3),
+                "reynolds": round(point["reynolds"], 0),
+                "friction_factor": round(point["friction_factor"], 5),
+                "friction_dp_bar": round(point["friction_dp_bar"], 4),
+            }
+        )
+
+    recycle_design_point = _hydraulic_for_case(
+        flow_tph=recycle_design_tph,
+        density_kgm3=density,
+        viscosity_cp=viscosity_cp,
+        nps_in=recycle["selected_nps_in"],
+        roughness_mm=roughness_mm,
+        equivalent_length_m=recycle_length,
+    )
+    recycle_cases.append(
         {
-            **row,
-            "velocity_ms": round(
-                _velocity_for_case(row["mass_flow_tph"], row["density_kgm3"], suction["selected_nps_in"]),
-                3,
-            ),
+            "case": "Minimum-flow design case",
+            "design_case_id": "DERIVED-MIN-FLOW",
+            "simulation_case_id": None,
+            "stream_number": None,
+            "mass_flow_tph": round(recycle_design_tph, 3),
+            "pressure_barg": None,
+            "temperature_degC": float(max_liquid.temperature),
+            "density_kgm3": density,
+            "viscosity_cp": viscosity_cp,
+            "required_recycle_tph": round(recycle_design_tph, 3),
+            "selected_nps_in": recycle["selected_nps_in"],
+            "internal_diameter_in": round(recycle_design_point["internal_diameter_in"], 4),
+            "velocity_ms": round(recycle_design_point["velocity_ms"], 3),
+            "reynolds": round(recycle_design_point["reynolds"], 0),
+            "friction_factor": round(recycle_design_point["friction_factor"], 5),
+            "friction_dp_bar": round(recycle_design_point["friction_dp_bar"], 4),
         }
-        for row in case_rows
-    ]
-    discharge_cases = [
-        {
-            **row,
-            "velocity_ms": round(
-                _velocity_for_case(row["mass_flow_tph"], row["density_kgm3"], discharge["selected_nps_in"]),
-                3,
+    )
+
+    def record(
+        *,
+        record_id: str,
+        service: str,
+        stream_number: str | None,
+        simulator_stream_id: str | None,
+        sequence: str,
+        sizing: dict[str, Any],
+        velocity_criterion_id: str,
+        velocity_limit: float,
+        dp_criterion_id: str,
+        dp_limit: float,
+        equivalent_length_criterion_id: str,
+        equivalent_length_m: float,
+        design_flow_tph: float,
+        case_results: list[dict[str, Any]],
+        object_ids: list[str],
+        governing_case: str,
+        governing_reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "record_id": record_id,
+            "service": service,
+            "stream_number": stream_number,
+            "simulator_stream_id": simulator_stream_id,
+            "sequence": sequence,
+            "line_number": _line_number(
+                nps_in=sizing["selected_nps_in"],
+                fluid_code=fluid_code,
+                sequence=sequence,
+                piping_class=piping_class,
             ),
+            "velocity_criterion_id": velocity_criterion_id,
+            "criterion_velocity_ms": velocity_limit,
+            "pressure_drop_criterion_id": dp_criterion_id,
+            "friction_dp_limit_bar": dp_limit,
+            "equivalent_length_criterion_id": equivalent_length_criterion_id,
+            "equivalent_length_m": equivalent_length_m,
+            "roughness_mm": roughness_mm,
+            "design_flow_tph": design_flow_tph,
+            "density_kgm3": density,
+            "viscosity_cp": viscosity_cp,
+            "flow_m3s": sizing["flow_m3s"],
+            "required_area_m2": sizing["required_area_m2"],
+            "required_diameter_m": sizing["required_diameter_m"],
+            "required_diameter_in": sizing["required_diameter_in"],
+            "selected_nps_in": sizing["selected_nps_in"],
+            "selected_internal_diameter_in": sizing["selected_internal_diameter_in"],
+            "design_velocity_ms": sizing["selected_velocity_ms"],
+            "design_reynolds": sizing["selected_reynolds"],
+            "design_friction_factor": sizing["selected_friction_factor"],
+            "design_friction_dp_bar": sizing["selected_friction_dp_bar"],
+            "candidate_checks": sizing["candidate_checks"],
+            "previous_candidate": sizing["previous_candidate"],
+            "case_results": case_results,
+            "object_ids": object_ids,
+            "governing_case": governing_case,
+            "governing_reason": governing_reason,
         }
-        for row in case_rows
-    ]
-    recycle_cases = [
-        {
-            **row,
-            "required_recycle_tph": round(max(recycle_design_tph - row["mass_flow_tph"], 0.0), 3),
-            "velocity_ms": round(
-                _velocity_for_case(
-                    max(recycle_design_tph - row["mass_flow_tph"], 0.0),
-                    row["density_kgm3"],
-                    recycle["selected_nps_in"],
-                ),
-                3,
-            ),
-        }
-        for row in case_rows
-    ]
 
     return [
-        {
-            "record_id": "LINE-1102-SIZING",
-            "service": "V-101 liquid outlet / P-101 suction",
-            "stream_number": "1102",
-            "simulator_stream_id": "S-102",
-            "sequence": "1102",
-            "line_number": _line_number(
-                nps_in=suction["selected_nps_in"],
-                fluid_code=fluid_code,
-                sequence="1102",
-                piping_class=piping_class,
-            ),
-            "velocity_criterion_id": "DBC-LINE-SUCTION-VEL",
-            "criterion_velocity_ms": suction_limit,
-            "design_flow_tph": float(max_liquid.mass_flow),
-            "density_kgm3": density,
-            "flow_m3s": suction["flow_m3s"],
-            "required_area_m2": suction["required_area_m2"],
-            "required_diameter_m": suction["required_diameter_m"],
-            "selected_nps_in": suction["selected_nps_in"],
-            "required_diameter_in": suction["required_diameter_in"],
-            "design_velocity_ms": suction["selected_velocity_ms"],
-            "candidate_checks": suction["candidate_checks"],
-            "previous_candidate": suction["previous_candidate"],
-            "case_results": suction_cases,
-            "object_ids": ["EQ-V101", "EQ-P101"],
-            "governing_case": "Maximum",
-            "governing_reason": "Maximum case has the highest published liquid flow in stream 1102.",
-        },
-        {
-            "record_id": "LINE-1103-SIZING",
-            "service": "P-101 discharge to downstream process",
-            "stream_number": "1103",
-            "simulator_stream_id": "S-103",
-            "sequence": "1103",
-            "line_number": _line_number(
-                nps_in=discharge["selected_nps_in"],
-                fluid_code=fluid_code,
-                sequence="1103",
-                piping_class=piping_class,
-            ),
-            "velocity_criterion_id": "DBC-LINE-DISCHARGE-VEL",
-            "criterion_velocity_ms": discharge_limit,
-            "design_flow_tph": float(max_liquid.mass_flow),
-            "density_kgm3": density,
-            "flow_m3s": discharge["flow_m3s"],
-            "required_area_m2": discharge["required_area_m2"],
-            "required_diameter_m": discharge["required_diameter_m"],
-            "selected_nps_in": discharge["selected_nps_in"],
-            "required_diameter_in": discharge["required_diameter_in"],
-            "design_velocity_ms": discharge["selected_velocity_ms"],
-            "candidate_checks": discharge["candidate_checks"],
-            "previous_candidate": discharge["previous_candidate"],
-            "case_results": discharge_cases,
-            "object_ids": ["EQ-P101"],
-            "governing_case": "Maximum",
-            "governing_reason": "Maximum case has the highest published pump discharge flow.",
-        },
-        {
-            "record_id": "LINE-1190-SIZING",
-            "service": "P-101 minimum-flow recycle to V-101",
-            "stream_number": None,
-            "simulator_stream_id": None,
-            "sequence": "1190",
-            "line_number": _line_number(
-                nps_in=recycle["selected_nps_in"],
-                fluid_code=fluid_code,
-                sequence="1190",
-                piping_class=piping_class,
-            ),
-            "velocity_criterion_id": "DBC-LINE-RECYCLE-VEL",
-            "criterion_velocity_ms": recycle_limit,
-            "design_flow_tph": recycle_design_tph,
-            "density_kgm3": density,
-            "flow_m3s": recycle["flow_m3s"],
-            "required_area_m2": recycle["required_area_m2"],
-            "required_diameter_m": recycle["required_diameter_m"],
-            "selected_nps_in": recycle["selected_nps_in"],
-            "required_diameter_in": recycle["required_diameter_in"],
-            "design_velocity_ms": recycle["selected_velocity_ms"],
-            "candidate_checks": recycle["candidate_checks"],
-            "previous_candidate": recycle["previous_candidate"],
-            "case_results": recycle_cases,
-            "object_ids": ["EQ-P101", "VLV-FCV101", "EQ-V101"],
-            "governing_case": "Minimum-flow design case",
-            "governing_reason": "Recycle line is sized for the minimum-flow protection duty rather than the normal process stream flow.",
-        },
+        record(
+            record_id="LINE-1102-SIZING",
+            service="V-101 liquid outlet / P-101 suction",
+            stream_number="1102",
+            simulator_stream_id="S-102",
+            sequence="1102",
+            sizing=suction,
+            velocity_criterion_id="DBC-LINE-SUCTION-VEL",
+            velocity_limit=suction_limit,
+            dp_criterion_id="DBC-LINE-SUCTION-DP",
+            dp_limit=suction_dp_limit,
+            equivalent_length_criterion_id="DBC-LINE-SUCTION-EQLEN",
+            equivalent_length_m=suction_length,
+            design_flow_tph=float(max_liquid.mass_flow),
+            case_results=suction_cases,
+            object_ids=["EQ-V101", "EQ-P101"],
+            governing_case="Maximum",
+            governing_reason="Maximum case has the highest published liquid flow in stream 1102 and therefore the highest selected-size velocity/friction loss.",
+        ),
+        record(
+            record_id="LINE-1103-SIZING",
+            service="P-101 discharge to downstream process",
+            stream_number="1103",
+            simulator_stream_id="S-103",
+            sequence="1103",
+            sizing=discharge,
+            velocity_criterion_id="DBC-LINE-DISCHARGE-VEL",
+            velocity_limit=discharge_limit,
+            dp_criterion_id="DBC-LINE-DISCHARGE-DP",
+            dp_limit=discharge_dp_limit,
+            equivalent_length_criterion_id="DBC-LINE-DISCHARGE-EQLEN",
+            equivalent_length_m=discharge_length,
+            design_flow_tph=float(max_liquid.mass_flow),
+            case_results=discharge_cases,
+            object_ids=["EQ-P101"],
+            governing_case="Maximum",
+            governing_reason="Maximum case has the highest published pump discharge flow and selected-size friction loss.",
+        ),
+        record(
+            record_id="LINE-1190-SIZING",
+            service="P-101 minimum-flow recycle to V-101",
+            stream_number=None,
+            simulator_stream_id=None,
+            sequence="1190",
+            sizing=recycle,
+            velocity_criterion_id="DBC-LINE-RECYCLE-VEL",
+            velocity_limit=recycle_limit,
+            dp_criterion_id="DBC-LINE-RECYCLE-DP",
+            dp_limit=recycle_dp_limit,
+            equivalent_length_criterion_id="DBC-LINE-RECYCLE-EQLEN",
+            equivalent_length_m=recycle_length,
+            design_flow_tph=recycle_design_tph,
+            case_results=recycle_cases,
+            object_ids=["EQ-P101", "VLV-FCV101", "EQ-V101"],
+            governing_case="Minimum-flow design case",
+            governing_reason="Recycle line is sized for the dedicated minimum-flow protection duty; Normal/Maximum/Turndown process flow alone does not define the recycle design flow.",
+        ),
     ]
 
 
