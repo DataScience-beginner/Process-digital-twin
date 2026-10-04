@@ -32,6 +32,7 @@ def render_clean_pid_html(
     plan: DrafterPlan,
     cleanup: CleanupResult,
     dossiers: dict[str, ObjectDossier] | None = None,
+    publication_stages: list | None = None,
 ) -> str:
     quality_issues = [*plan.issues, *cleanup.issues]
     status = "RED" if any(i.severity == "RED" for i in quality_issues) else (
@@ -47,6 +48,12 @@ def render_clean_pid_html(
             for object_id, dossier in (dossiers or {}).items()
         }
     ).replace("</", "<\\/")
+    stage_payload = json.dumps(
+        [
+            item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+            for item in (publication_stages or [])
+        ]
+    ).replace("</", "<\\/")
 
     return f"""<!doctype html>
 <html>
@@ -57,6 +64,12 @@ def render_clean_pid_html(
 body{{margin:0;font-family:Arial,Helvetica,sans-serif;background:#e7e9ec;color:#111}}
 header{{background:#fff;border-bottom:1px solid #aaa;padding:11px 16px;display:flex;justify-content:space-between}}
 header a{{margin-left:14px;color:#174a77;text-decoration:none;font-size:12px}}
+.publishbar{{background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:8px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}}
+.pubbtn{{font-size:10px;padding:7px 9px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
+.pubbtn:hover{{background:#eef2ff}} .pubbtn.all{{font-weight:700;border-color:#334155}}
+.pubstatus{{font-size:9px;padding:3px 6px;border-radius:999px;background:#e5e7eb;color:#374151}}
+.pubstatus.published{{background:#dcfce7;color:#166534}}
+.pubmsg{{font-size:10px;margin-left:auto;color:#475569}}
 main{{display:grid;grid-template-columns:minmax(900px,1fr) 430px;gap:12px;padding:12px}}
 .sheet{{background:#fff;border:1px solid #777;overflow:auto}}
 .side{{background:#fff;border:1px solid #aaa;padding:14px}}
@@ -96,9 +109,10 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 </head>
 <body>
 <header>
-<div><strong>Digital BDEP — Engineering View</strong><div class="muted">MVP 0.6D · connected P&ID + object-centric Digital Thread inspector</div></div>
-<nav><a href="/engineering-05b">0.5B</a><a href="/engineering-skeleton">Skeleton</a><a href="/graph">Graph View</a></nav>
+<div><strong>Digital BDEP — Engineering View</strong><div class="muted">Staged publishing · connected P&ID + object-centric Digital Thread</div></div>
+<nav><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
 </header>
+<div class="publishbar" id="publishbar"></div>
 <main>
 <section class="sheet">
 <svg viewBox="0 0 1120 690">
@@ -209,6 +223,52 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 </main>
 <script>
 const dossiers={dossier_payload};
+let publicationStages={stage_payload};
+const publishDefs=[
+ ["design_basis","Publish Design Basis"],
+ ["simulation","Publish Simulation"],
+ ["configuration","Select Configuration"],
+ ["process","Publish Process Data"],
+ ["instrumentation","Publish Instrumentation"],
+ ["mechanical","Publish Mechanical"],
+ ["costing","Publish Costing"]
+];
+function stageState(id){{
+ return publicationStages.find(x=>x.stage===id)||{{status:"not_published"}};
+}}
+function renderPublishBar(){{
+ const buttons=publishDefs.map(([id,label])=>{{
+   const state=stageState(id);
+   return '<button class="pubbtn" onclick="publishStage(\''+id+'\')">'+label+'</button><span class="pubstatus '+(state.status==="published"?"published":"")+'">'+esc(state.status||"not_published")+'</span>';
+ }}).join("");
+ document.getElementById("publishbar").innerHTML=buttons+'<button class="pubbtn all" onclick="publishAllStages()">Publish All</button><span id="pubmsg" class="pubmsg"></span>';
+}}
+async function publishStage(stage){{
+ const msg=document.getElementById("pubmsg");
+ msg.textContent="Publishing "+stage+"...";
+ try {{
+   const r=await fetch('/api/publish/'+stage,{{method:'POST'}});
+   const body=await r.json();
+   if(!r.ok) throw new Error(body.detail||'Publish failed');
+   msg.textContent=stage+" published.";
+   setTimeout(()=>location.reload(),350);
+ }} catch(e) {{
+   msg.textContent="Blocked: "+e.message;
+ }}
+}}
+async function publishAllStages(){{
+ const msg=document.getElementById("pubmsg");
+ msg.textContent="Publishing all stages...";
+ try {{
+   const r=await fetch('/api/publish-all',{{method:'POST'}});
+   const body=await r.json();
+   if(!r.ok) throw new Error(body.detail||'Publish all failed');
+   msg.textContent="All current stages published.";
+   setTimeout(()=>location.reload(),350);
+ }} catch(e) {{
+   msg.textContent="Blocked: "+e.message;
+ }}
+}}
 const tabDefs=[
  ["overview","Overview"],
  ["design_basis","Design Basis"],
@@ -330,6 +390,7 @@ function setInspectorMode(mode){{
  if(selectedId&&dossiers[selectedId])renderProperties(dossiers[selectedId]);
 }}
 function selectObject(id){{selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);}}
+renderPublishBar();
 if(dossiers["EQ-V101"])selectObject("EQ-V101");
 </script>
 </body></html>"""
