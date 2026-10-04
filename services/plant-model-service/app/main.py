@@ -13,7 +13,9 @@ from .drafter import build_drafter_instrumented, build_drafter_skeleton
 from .dashboard_renderer import render_dashboard_html
 from .db_schema import engine_from_url
 from .graph_renderer import render_graph_html
+from .inspection_graph import build_inspection_graph
 from .instrumented_renderer import render_instrumented_pid_html
+from .entity_detail_renderer import render_entity_detail_html
 from .skeleton_renderer import render_drafter_skeleton_html
 from .persistence import (
     database_summary,
@@ -78,19 +80,8 @@ def engineering_view():
     engine = _app_engine()
     with Session(engine) as session:
         dossiers = {
-            object_id: load_object_dossier(session, object_id)
-            for object_id in [
-                "EQ-V101",
-                "EQ-P101",
-                "VLV-FCV101",
-                "VLV-LCV101",
-                "VLV-PSV101",
-                "INS-PT101",
-                "INS-LT101",
-                "INS-LIC101",
-                "INS-FT101",
-                "INS-FIC101",
-            ]
+            obj.id: load_object_dossier(session, obj.id)
+            for obj in model.objects
         }
         stages = publication_status(session)
     return render_clean_pid_html(
@@ -217,6 +208,28 @@ def object_detail_view(object_id: str):
     with Session(engine) as session:
         dossier = load_object_dossier(session, object_id)
     return render_object_detail_html(dossier)
+
+
+@app.get("/entity/{entity_id}/detail", response_class=HTMLResponse)
+def entity_detail_view(entity_id: str):
+    compilation = _compile_case("CASE-NORMAL")
+    model = compilation.plant_model
+    plan = build_drafter_instrumented(model)
+    engine = _app_engine()
+    with Session(engine) as session:
+        dossiers = {
+            obj.id: load_object_dossier(session, obj.id)
+            for obj in model.objects
+        }
+
+    if entity_id in dossiers:
+        return render_object_detail_html(dossiers[entity_id])
+
+    inspection = build_inspection_graph(model, dossiers, plan.routes)
+    entity = inspection["entities"].get(entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Unknown engineering entity: {entity_id}")
+    return render_entity_detail_html(entity)
 
 
 @app.get("/api/db/summary")
