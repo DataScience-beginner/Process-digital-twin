@@ -6,15 +6,22 @@ from sqlalchemy.orm import Session, sessionmaker
 from .configurations import demo_integrated_configuration_model
 from .config_matcher import APPROVED_CONFIGURATIONS, ConfigurationDefinition
 from .db_schema import (
+    ClientIssueRow,
     CriterionObjectLinkRow,
     DesignBasisCriterionRow,
     DesignBasisRevisionRow,
     DesignCaseRow,
+    EngineeringBaselineRow,
+    EngineeringChangePackageRow,
+    EngineeringChangeRecordRow,
+    EngineeringIntegrationQueueRow,
     EngineeringRecordRow,
+    EngineeringReviewRequirementRow,
     EquipmentRow,
     ProcessConfigurationRow,
     PublicationStageRow,
     ProjectRow,
+    ReleaseCandidateRow,
     RecordObjectLinkRow,
     SimulationCaseRow,
     StreamCaseResultRow,
@@ -45,6 +52,13 @@ DESIGN_BASIS_REVISION_ID = "DB-001-A"
 
 def _clear_demo(session: Session) -> None:
     for table in [
+        ClientIssueRow,
+        ReleaseCandidateRow,
+        EngineeringIntegrationQueueRow,
+        EngineeringReviewRequirementRow,
+        EngineeringChangeRecordRow,
+        EngineeringChangePackageRow,
+        EngineeringBaselineRow,
         RecordObjectLinkRow,
         EngineeringRecordRow,
         PublicationStageRow,
@@ -347,6 +361,13 @@ def database_summary(session: Session) -> dict[str, int]:
         "stream_components": StreamComponentRow,
         "engineering_records": EngineeringRecordRow,
         "record_object_links": RecordObjectLinkRow,
+        "engineering_baselines": EngineeringBaselineRow,
+        "engineering_change_packages": EngineeringChangePackageRow,
+        "engineering_change_records": EngineeringChangeRecordRow,
+        "engineering_review_requirements": EngineeringReviewRequirementRow,
+        "engineering_integration_queue": EngineeringIntegrationQueueRow,
+        "release_candidates": ReleaseCandidateRow,
+        "client_issues": ClientIssueRow,
     }
     return {
         name: len(session.scalars(select(entity)).all())
@@ -389,6 +410,9 @@ def ensure_demo_seeded(engine) -> None:
         existing = session.scalar(select(ProjectRow.id).limit(1))
     if existing is None:
         seed_demo_database(engine)
+        with Session(engine) as session:
+            from .revision_control import seed_revision_control_demo
+            seed_revision_control_demo(session, PROJECT_ID)
         return
 
     # Earlier demo DBs may predate later schema/data additions. Backfill
@@ -450,6 +474,12 @@ def ensure_demo_seeded(engine) -> None:
 
         if changed:
             session.commit()
+
+    # Revision/review/client-issue control is seeded independently so older demo
+    # databases receive the new governance tables without destructive reset.
+    with Session(engine) as session:
+        from .revision_control import seed_revision_control_demo
+        seed_revision_control_demo(session, PROJECT_ID)
 
 
 
