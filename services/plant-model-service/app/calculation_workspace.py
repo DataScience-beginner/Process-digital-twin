@@ -383,6 +383,7 @@ ul{{font-size:9px;line-height:1.5;margin:0;padding-left:18px}}
 <a href="/export/dexpi.xml">DEXPI XML</a>
 <a href="/export/visio.vdx">Visio VDX</a>
 <a href="/export/drawing.dxf">CAD DXF</a>
+<a href="/export/drawing.dwg">DWG*</a>
 <button onclick="window.print()">Print</button>
 <a href="/engineering">PID-001</a>
 <a href="/engineering-2">PID-002</a>
@@ -390,6 +391,7 @@ ul{{font-size:9px;line-height:1.5;margin:0;padding-left:18px}}
 </div>
 <span class="badge">Published data + explicit engineering gates</span>
 </section>
+<div class="sub" style="margin:6px 2px">* DWG export uses the administrator-configured approved Autodesk/ODA converter adapter. The service will not fabricate a DWG when no converter is configured.</div>
 
 <div class="topgrid">
 <section class="panel"><h2>Design Basis / Criteria</h2>{_table(basis_rows, preferred=["criterion_id","criterion","value","unit","revision","status","source"])}</section>
