@@ -356,7 +356,11 @@ def test_psv_trace_is_explicitly_gated_not_fake_final_sizing():
     assert trace["qualification"].startswith("Safety-critical")
     assert checks["Final governing scenario established"] == "GATED"
     assert checks["Final orifice sizing permitted"] == "GATED"
-    assert any("not a final" in item.lower() for item in trace["limitations"])
+    assert any(
+        ("not a certified" in item.lower())
+        or ("must not be issued" in item.lower())
+        for item in trace["limitations"]
+    )
 
 
 def test_detailed_renderers_show_full_calculation_trace():
