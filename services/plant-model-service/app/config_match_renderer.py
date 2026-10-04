@@ -42,6 +42,7 @@ def render_configuration_match_html(
     ) or '<div class="empty">No applicability rules.</div>'
 
     stream_label = matched_stream.simulator_stream_id if matched_stream else "—"
+    stream_number = matched_stream.stream_number if matched_stream else "—"
     phase = matched_stream.phase if matched_stream else "—"
 
     return f"""<!doctype html>
@@ -85,7 +86,7 @@ svg{{width:100%;height:auto;background:#fff}}
 <!-- Feed boundary -->
 <path class="pipe" d="M55 250 H170"/>
 <polygon class="eq" points="55,242 78,242 88,250 78,258 55,258"/>
-<text x="55" y="280" class="txt">S-100 FEED</text>
+<text x="55" y="280" class="txt">1100 · S-100 FEED</text>
 
 <!-- Vessel -->
 <path class="eq" d="M170 170 Q215 145 260 170 L260 330 Q215 355 170 330 Z"/>
@@ -94,11 +95,11 @@ svg{{width:100%;height:auto;background:#fff}}
 
 <!-- Vapor -->
 <path class="pipe" d="M215 158 V95 H335"/>
-<text x="245" y="88" class="txt">S-101 vapor</text>
+<text x="245" y="88" class="txt">1101 · S-101 vapor</text>
 
 <!-- Liquid stream -->
 <path class="pipe" d="M215 343 V420 H530"/>
-<text x="315" y="407" class="txt">{html.escape(stream_label)} · {html.escape(phase)}</text>
+<text x="315" y="407" class="txt">{html.escape(stream_number)} · {html.escape(stream_label)} · {html.escape(phase)}</text>
 
 <!-- Pump -->
 <circle class="eq" cx="585" cy="420" r="38"/>
@@ -109,7 +110,7 @@ svg{{width:100%;height:auto;background:#fff}}
 <!-- Pump discharge -->
 <path class="pipe" d="M623 420 H785"/>
 <polygon class="eq" points="760,412 785,412 798,420 785,428 760,428"/>
-<text x="685" y="407" class="txt">S-103</text>
+<text x="685" y="407" class="txt">1103 · S-103</text>
 
 <!-- Matcher boundary -->
 <rect x="130" y="125" width="555" height="390" fill="none" stroke="#777" stroke-width="1" stroke-dasharray="6 5"/>
