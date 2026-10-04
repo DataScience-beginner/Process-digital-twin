@@ -93,6 +93,10 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .tab.active{{background:#1f2937;color:#fff}}
 .card{{border:1px solid #e5e7eb;border-radius:5px;padding:7px;margin:6px 0;font-size:10px}}
 .card .value{{font-weight:700;margin-top:3px}} .prov{{color:#6b7280;font-size:9px;margin-top:4px}}
+.structured-value{{margin-top:5px;border:1px solid #e5e7eb;border-radius:4px;overflow:hidden}}
+.sv-row{{display:grid;grid-template-columns:52% 48%;border-top:1px solid #e5e7eb;font-size:9px}}
+.sv-row:first-child{{border-top:0}} .sv-key{{background:#f8fafc;padding:5px 6px;font-weight:600}}
+.sv-val{{padding:5px 6px;word-break:break-word}} .sv-list{{margin:0;padding-left:16px;font-weight:400}}
 .empty{{font-size:10px;color:#6b7280;padding:10px 0}}
 .object-head{{border-bottom:1px solid #ddd;padding-bottom:8px}}
 .view-switch{{display:flex;gap:6px;margin:10px 0 6px}}
@@ -305,13 +309,28 @@ let inspectorMode="tabs";
 function esc(v){{
  return String(v ?? "—").replace(/[&<>"']/g,m=>({{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}}[m]));
 }}
+function humanKey(key){{
+ return String(key).replace(/_/g," ").replace(/\b\w/g,m=>m.toUpperCase());
+}}
+function formatValue(value,unit){{
+ if(value===null||value===undefined)return "—";
+ if(Array.isArray(value)){{
+   if(!value.length)return "—";
+   return '<ul class="sv-list">'+value.map(v=>'<li>'+formatValue(v,null)+'</li>').join("")+'</ul>';
+ }}
+ if(typeof value==="object"){{
+   const rows=Object.entries(value).map(([k,v])=>'<div class="sv-row"><div class="sv-key">'+esc(humanKey(k))+'</div><div class="sv-val">'+formatValue(v,null)+'</div></div>').join("");
+   return '<div class="structured-value">'+rows+'</div>';
+ }}
+ return esc(value)+(unit?(" "+esc(unit)):"");
+}}
 function provenance(p){{
  if(!p)return "";
- const bits=[p.source_type,p.source_id,p.source_revision?("Rev "+p.source_revision):null,p.method].filter(Boolean);
+ const bits=[p.source_type,p.source_id,p.source_revision?("Rev "+p.source_revision):null,p.method,p.note].filter(Boolean);
  return '<div class="prov">Source: '+bits.map(esc).join(" · ")+'</div>';
 }}
 function card(name,value,unit,status,p){{
- return '<div class="card"><div>'+esc(name)+'</div><div class="value">'+esc(value)+(unit?(" "+esc(unit)):"")+'</div>'+(status?'<div class="prov">Status: '+esc(status)+'</div>':"")+provenance(p)+'</div>';
+ return '<div class="card"><div>'+esc(name)+'</div><div class="value">'+formatValue(value,unit)+'</div>'+(status?'<div class="prov">Status: '+esc(status)+'</div>':"")+provenance(p)+'</div>';
 }}
 function recordsFor(d,key){{
  return (d.records||{{}})[key]||[];
@@ -323,7 +342,7 @@ function sourceLine(p){{
 }}
 function propertyRow(name,value,unit,p){{
  const src=sourceLine(p);
- return '<div class="property-row"><div class="property-name">'+esc(name)+'</div><div class="property-value">'+esc(value)+(unit?(" "+esc(unit)):"")+'</div>'+(src?'<div class="property-source">Source: '+esc(src)+'</div>':"")+'</div>';
+ return '<div class="property-row"><div class="property-name">'+esc(name)+'</div><div class="property-value">'+formatValue(value,unit)+'</div>'+(src?'<div class="property-source">Source: '+esc(src)+'</div>':"")+'</div>';
 }}
 function propertyGroup(title,items){{
  if(!items.length)return "";
