@@ -3,6 +3,7 @@ import pytest
 from app.config_matcher import MatchStatus, match_configuration
 from app.configurations import demo_integrated_configuration_model
 from app.simulation import publish_demo_simulation
+from app.drafter import build_drafter_instrumented
 from app.topology_compiler import CompilationBlocked, compile_engineering_topology
 
 
@@ -120,3 +121,31 @@ def test_unknown_configuration_is_blocked_from_compilation():
 
     with pytest.raises(CompilationBlocked, match="requires EXACT match"):
         compile_engineering_topology(unknown_publication, unknown_match)
+
+
+
+def test_compiled_model_drives_existing_drafter_with_connected_routes():
+    publication = publish_demo_simulation("CASE-NORMAL")
+    result = compile_engineering_topology(publication, _exact_match(publication))
+    plan = build_drafter_instrumented(result.plant_model)
+
+    roles = {route.role for route in plan.routes}
+    assert {
+        "primary_suction",
+        "primary_discharge",
+        "minimum_flow_recycle",
+        "psv_relief",
+        "vessel_vent",
+        "vessel_drain",
+        "pressure_to_pt",
+        "pressure_to_pi",
+        "level_to_lt",
+        "level_to_li",
+        "pump_suction_pi",
+        "pump_discharge_pi",
+        "level_signal",
+        "level_control_signal",
+        "flow_signal",
+        "flow_control_signal",
+    } <= roles
+    assert plan.status == "GREEN"
