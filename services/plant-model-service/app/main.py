@@ -18,6 +18,7 @@ from .graph_renderer import render_graph_html
 from .inspection_graph import build_inspection_graph
 from .instrumented_renderer import render_instrumented_pid_html
 from .entity_detail_renderer import render_entity_detail_html
+from .dwg_adapter import DwgConverterUnavailable, convert_dxf_to_dwg, dwg_converter_status
 from .exporters import (
     export_dexpi_oriented_xml,
     export_dxf_demo,
@@ -380,6 +381,26 @@ def export_drawing_dxf():
         content=payload,
         media_type="application/dxf",
         headers={"Content-Disposition": 'attachment; filename="PID-DEMO-001.dxf"'},
+    )
+
+
+@app.get("/export/dwg-status")
+def export_dwg_status():
+    return dwg_converter_status()
+
+
+@app.get("/export/drawing.dwg")
+def export_drawing_dwg():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    dxf = export_dxf_demo(model, plan)
+    try:
+        payload = convert_dxf_to_dwg(dxf)
+    except DwgConverterUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=payload,
+        media_type="application/acad",
+        headers={"Content-Disposition": 'attachment; filename="PID-DEMO-001.dwg"'},
     )
 
 
