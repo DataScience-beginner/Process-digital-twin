@@ -47,11 +47,9 @@ def _symbol_svg(obj, rep: Representation) -> str:
         )
 
     if master.key.startswith("nozzle."):
-        return (
-            f'<g class="obj nozzle-node" {attrs} onclick="{onclick}">'
-            f'<circle cx="{x}" cy="{y}" r="3" class="nozzle-dot"/>'
-            f'</g>'
-        )
+        # Nozzle nodes remain semantic/drawing anchors but are not displayed
+        # as graph nodes in the conventional engineering view.
+        return ""
 
     if master.key == "valve.isolation_valve":
         return (
@@ -161,7 +159,7 @@ def _sheet_frame(project_id: str) -> str:
         + f'<line class="border" x1="{w-390}" y1="{title_y}" x2="{w-390}" y2="{h-m}"/>'
         + f'<line class="thin" x1="{w-245}" y1="{title_y}" x2="{w-245}" y2="{h-m}"/>'
         + f'<text class="title" x="{w-375}" y="{title_y+24}">DIGITAL BDEP - P&ID CONCEPT</text>'
-        + f'<text class="title2" x="{w-375}" y="{title_y+45}">SEMANTIC GRAPH + DRAWING VIEW</text>'
+        + f'<text class="title2" x="{w-375}" y="{title_y+45}">PROCESS & INSTRUMENTATION DIAGRAM</text>'
         + f'<text class="title2" x="{w-375}" y="{title_y+64}">PROJECT: {html.escape(project_id)}</text>'
         + f'<text class="smalltag" x="{w-230}" y="{title_y+24}">DRAWING: PID-DEMO-001</text>'
         + f'<text class="smalltag" x="{w-230}" y="{title_y+43}">REV: A</text>'
@@ -187,15 +185,15 @@ def render_pid_html(model: PlantModel) -> str:
     <text class="linetag" x="790" y="417">L-P101-DIS</text>
     <text class="linetag" x="650" y="263">L-P101-REC</text>
     <text class="note" x="55" y="640">NOTES:</text>
-    <text class="note" x="55" y="655">1. EVERY DRAWN OBJECT LINKS TO A SEMANTIC PLANT OBJECT ID.</text>
-    <text class="note" x="55" y="670">2. EVERY ROUTE LINKS TO A SEMANTIC CONNECTION OR ASSOCIATION EDGE.</text>
+    <text class="note" x="55" y="655">1. DEVELOPMENT P&ID - SYMBOLS AND DRAFTING CONVENTIONS UNDER QUALIFICATION.</text>
+    <text class="note" x="55" y="670">2. DIGITAL THREAD METADATA IS AVAILABLE IN THE GRAPH VIEW.</text>
     """
 
     return f"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Digital BDEP Semantic P&ID</title>
+<title>Digital BDEP Engineering View</title>
 <style>
 body{{margin:0;font-family:Arial,Helvetica,sans-serif;background:#e5e7eb;color:#111}}
 header{{padding:12px 18px;background:#fff;border-bottom:1px solid #aaa}}
@@ -217,7 +215,7 @@ svg{{width:100%;min-width:1180px;height:auto;background:#fff}}
 </style>
 </head>
 <body>
-<header><strong>Digital BDEP — Semantic Graph + P&ID View</strong><span class="muted"> · MVP 0.4</span></header>
+<header style="display:flex;justify-content:space-between;align-items:center"><div><strong>Digital BDEP — Engineering View</strong><span class="muted"> · Conventional P&ID presentation</span></div><nav><a href="/engineering" style="margin-right:12px"><strong>Engineering View</strong></a><a href="/graph">Graph View</a></nav></header>
 <main>
 <section class="viewer"><svg viewBox="0 0 1180 760">
 {_sheet_frame(model.project_id)}
@@ -229,11 +227,10 @@ svg{{width:100%;min-width:1180px;height:auto;background:#fff}}
 <h3 id="tag">V-101</h3><div id="kind" class="muted"></div>
 <div class="section">Semantic object</div><div id="details"></div>
 <div class="section">Ports / node</div><div id="ports"></div>
-<div class="section">Digital thread</div>
-<div class="row">Shape → semantic_object_id</div>
-<div class="row">Route → semantic_edge_id</div>
-<div class="row">Equipment → nozzle nodes → piping</div>
-<div class="row">Drawing geometry remains separate</div>
+<div class="section">Engineering view</div>
+<div class="row">Conventional P&ID presentation</div>
+<div class="row">Digital-thread metadata hidden from the drawing</div>
+<div class="row"><a href="/graph">Open Graph View</a></div>
 </aside>
 </main>
 <script>
