@@ -887,6 +887,49 @@ def publish_instrumentation(session: Session) -> PublicationResult:
             source_id="CALC-FCV101-001",
             method="demo liquid Kv/Cv equation using published Design Basis",
             object_ids=["VLV-FCV101", "EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Pump rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Minimum-flow fraction", "value": round(min_flow_fraction * 100.0, 3), "unit": "%"},
+                    {"name": "Minimum-flow design rate", "value": round(min_flow_tph, 3), "unit": "t/h"},
+                    {"name": "Liquid density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-CV-SIZING-DP", "name": "Sizing pressure drop", "value": cv_dp, "unit": "bar"},
+                    {"criterion_id": "DBC-CV-SIZING-MARGIN", "name": "Cv sizing margin", "value": round(cv_margin * 100.0, 3), "unit": "%"},
+                    {"criterion_id": "DBC-CV-NORMAL-OPENING", "name": "Normal opening target", "value": normal_opening, "unit": "%"},
+                    {"criterion_id": "DBC-CV-MAX-OPENING", "name": "Maximum opening limit", "value": max_opening, "unit": "%"},
+                    {"criterion_id": "DBC-CV-FAIL-FCV101", "name": "Fail position", "value": fail_position},
+                ],
+                case_results=[
+                    {
+                        **row,
+                        "required_recycle_tph": round(max(min_flow_tph - row["mass_flow_tph"], 0.0), 3),
+                        "comment": (
+                            "Recycle demand is zero because process flow exceeds preliminary minimum-flow requirement."
+                            if row["mass_flow_tph"] >= min_flow_tph
+                            else "Recycle must supplement process flow to maintain minimum pump flow."
+                        ),
+                    }
+                    for row in _stream_case_table("STR-S102")
+                ] + [
+                    {
+                        "case": "Minimum-flow design case",
+                        "mass_flow_tph": round(min_flow_tph, 3),
+                        "flow_m3h": round(q_m3h, 3),
+                        "specific_gravity": round(sg, 4),
+                        "sizing_dp_bar": cv_dp,
+                    }
+                ],
+                governing_case="Minimum-flow design case",
+                governing_reason="FCV-101 is sized for the dedicated minimum-flow protection duty, not for the normal process-throughput case.",
+                outputs=[
+                    {"name": "Raw Cv", "value": round(raw_cv, 3)},
+                    {"name": "Design Cv", "value": round(design_cv, 3)},
+                    {"name": "FT upper range", "value": ft_range_hi, "unit": "t/h"},
+                ],
+                method="Deterministic preliminary liquid control-valve sizing using published minimum-flow duty and Design Basis pressure drop.",
+            ),
         )
     )
     record_ids.append(
@@ -901,6 +944,23 @@ def publish_instrumentation(session: Session) -> PublicationResult:
             source_id="INST-FT101-RANGE",
             method="1.25 × minimum-flow design rate rounded upward",
             object_ids=["INS-FT101", "EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Minimum-flow design rate", "value": round(min_flow_tph, 3), "unit": "t/h"},
+                ],
+                criteria=[
+                    {"name": "Range factor", "value": 1.25},
+                    {"name": "Rounding increment", "value": 5.0, "unit": "t/h"},
+                ],
+                case_results=_stream_case_table("STR-S102"),
+                governing_case="Minimum-flow design case",
+                governing_reason="FT-101 range must cover the minimum-flow protection measurement with operating margin.",
+                outputs=[
+                    {"name": "LRV", "value": 0.0, "unit": "t/h"},
+                    {"name": "URV", "value": ft_range_hi, "unit": "t/h"},
+                ],
+                method="Deterministic instrument range selection.",
+            ),
         )
     )
     record_ids.append(
