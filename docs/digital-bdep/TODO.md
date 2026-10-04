@@ -155,51 +155,51 @@ Goal: complete the multidisciplinary engineering publish backbone before change 
 ## MVP 0.9A — Detailed Object / Datasheet Views
 Goal: every selected engineering item can open a detailed calculation/datasheet view in addition to the compact sidebar.
 
-- [ ] Add "Open Detail / Pop-out" action for selected P&ID objects
-- [ ] Detailed object header: tag, type, service, revision, maturity/status
-- [ ] Show Design Basis criteria linked to the selected object
+- [x] Add "Open Detail / Pop-out" action for selected P&ID objects
+- [x] Detailed object header: tag, type, service, revision, maturity/status
+- [x] Show Design Basis criteria linked to the selected object
 - [ ] Calculation detail sections:
-  - [ ] inputs
-  - [ ] criteria / limits
-  - [ ] calculation method / service
-  - [ ] Normal / Maximum / Turndown case results
-  - [ ] governing case and why
-  - [ ] outputs
-  - [ ] provenance / revision
-- [ ] Full-page object datasheet route for pop-out
-- [ ] In-page modal/dialog for quick review
+  - [x] inputs
+  - [x] criteria / limits
+  - [x] calculation method / service
+  - [x] Normal / Maximum / Turndown case results
+  - [x] governing case and why
+  - [x] outputs
+  - [x] provenance / revision
+- [x] Full-page object datasheet route for pop-out
+- [x] In-page modal/dialog for quick review
 
 ## MVP 0.9B — PSV Scenario / Relief Detail
-- [ ] Structured relief-scenario register for PSV-101
-- [ ] Show why each scenario is considered
-- [ ] Show required inputs and current data completeness
-- [ ] Show screening result for each scenario
-- [ ] Show preliminary selected scenario and selection rationale
-- [ ] Do not claim a final governing case until the qualified relief service runs
-- [ ] Final orifice sizing remains a gated qualified deterministic service
+- [x] Structured relief-scenario register for PSV-101
+- [x] Show why each scenario is considered
+- [x] Show required inputs and current data completeness
+- [x] Show screening result for each scenario
+- [x] Show preliminary selected scenario and selection rationale
+- [x] Do not claim a final governing case until the qualified relief service runs
+- [x] Final orifice sizing remains a gated qualified deterministic service
 
 ## MVP 0.9C — Stream Numbering, Line Numbering and Line Sizing
-- [ ] Add four-digit process stream numbers
-- [ ] Preserve simulator stream ID separately from engineering stream number
-- [ ] Add project fluid code and piping class criteria
-- [ ] Define line-number format: size - fluid code - stream/sequence - piping class
-- [ ] Deterministic liquid line-sizing service
-- [ ] Size V-101 → P-101 suction line
-- [ ] Size P-101 discharge line
-- [ ] Size minimum-flow recycle line
-- [ ] Show Normal / Maximum / Turndown velocities for selected sizes
-- [ ] Publish line-sizing records with criteria and provenance
-- [ ] Show stream numbers and line numbers on Engineering View
-- [ ] Add line summary to relevant equipment detailed views
+- [x] Add four-digit process stream numbers
+- [x] Preserve simulator stream ID separately from engineering stream number
+- [x] Add project fluid code and piping class criteria
+- [x] Define line-number format: size - fluid code - stream/sequence - piping class
+- [x] Deterministic liquid line-sizing service
+- [x] Size V-101 → P-101 suction line
+- [x] Size P-101 discharge line
+- [x] Size minimum-flow recycle line
+- [x] Show Normal / Maximum / Turndown velocities for selected sizes
+- [x] Publish line-sizing records with criteria and provenance
+- [x] Show stream numbers and line numbers on Engineering View
+- [x] Add line summary to relevant equipment detailed views
 
 ## MVP 0.9D — Project / Equipment Dashboard
-- [ ] Publication-stage completion summary
-- [ ] Equipment / valve / instrument status matrix
-- [ ] Discipline completion per object
-- [ ] Cost per major equipment / valve
-- [ ] Total section/project demo estimate
-- [ ] Outstanding / TBD / gated items
-- [ ] Links from dashboard to Engineering View and object detail pages
+- [x] Publication-stage completion summary
+- [x] Equipment / valve / instrument status matrix
+- [x] Discipline completion per object
+- [x] Cost per major equipment / valve
+- [x] Total section/project demo estimate
+- [x] Outstanding / TBD / gated items
+- [x] Links from dashboard to Engineering View and object detail pages
 
 ## MVP 1.0 — Vendor / EPC Information Thread
 - [ ] Vendor enquiry package inputs
