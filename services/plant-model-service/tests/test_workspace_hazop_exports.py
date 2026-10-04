@@ -229,3 +229,20 @@ def test_dexpi_visio_dxf_and_pdf_exports_are_real_files_with_semantic_content():
     assert pdf.startswith(b"%PDF-1.4")
     assert b"TRACE-CALC-P101-RATED-DUTY" not in pdf  # trace ID is not forced into compact text export
     assert len(pdf) > 1000
+
+
+
+def test_mechanical_and_cost_tabs_also_have_step_by_step_trace():
+    model, plan, engine, dossiers, inspection = _context()
+
+    mech_vessel = _record(dossiers["EQ-V101"], "MECH-V101")
+    mech_pump = _record(dossiers["EQ-P101"], "MECH-P101")
+    cost_vessel = _record(dossiers["EQ-V101"], "COST-V101")
+    cost_total = _record(dossiers["EQ-P101"], "COST-PACKAGE-TOTAL")
+
+    for record in [mech_vessel, mech_pump, cost_vessel, cost_total]:
+        trace = record.metadata["calculation_detail"]["trace"]
+        assert trace["steps"]
+        assert trace["validation_checks"]
+        assert trace["limitations"]
+        assert trace["downstream_consumers"]
