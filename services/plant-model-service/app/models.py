@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -24,32 +26,79 @@ class EquipmentType(StrEnum):
     CENTRIFUGAL_PUMP = "centrifugal_pump"
 
 
+class ValveType(StrEnum):
+    ISOLATION = "isolation_valve"
+    CHECK = "check_valve"
+    CONTROL = "control_valve"
+
+
+class InstrumentType(StrEnum):
+    PRESSURE_INDICATOR = "pressure_indicator"
+    FLOW_TRANSMITTER = "flow_transmitter"
+    FLOW_CONTROLLER = "flow_controller"
+
+
+class JunctionType(StrEnum):
+    BRANCH = "branch"
+    BOUNDARY = "boundary"
+
+
+class ConnectionKind(StrEnum):
+    PROCESS = "process"
+    SIGNAL = "signal"
+
+
 class Port(BaseModel):
     name: str = Field(min_length=1)
     kind: PortKind
     direction: PortDirection
 
 
-class Equipment(BaseModel):
+class PlantObject(BaseModel):
     id: str = Field(min_length=1)
     tag: str = Field(min_length=1)
-    equipment_type: EquipmentType
     service: str | None = None
-    ports: list[Port]
+    ports: list[Port] = Field(default_factory=list)
     properties: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def unique_ports(self) -> "Equipment":
-        names = [p.name for p in self.ports]
+    def validate_unique_ports(self):
+        names = [port.name for port in self.ports]
         if len(names) != len(set(names)):
-            raise ValueError(f"Equipment {self.id} contains duplicate port names")
+            raise ValueError(f"Object {self.id} contains duplicate port names")
         return self
 
     def port(self, name: str) -> Port:
-        for item in self.ports:
-            if item.name == name:
-                return item
+        for port in self.ports:
+            if port.name == name:
+                return port
         raise KeyError(name)
+
+
+class Equipment(PlantObject):
+    category: Literal["equipment"] = "equipment"
+    equipment_type: EquipmentType
+
+
+class Valve(PlantObject):
+    category: Literal["valve"] = "valve"
+    valve_type: ValveType
+
+
+class Instrument(PlantObject):
+    category: Literal["instrument"] = "instrument"
+    instrument_type: InstrumentType
+
+
+class Junction(PlantObject):
+    category: Literal["junction"] = "junction"
+    junction_type: JunctionType
+
+
+PlantObjectUnion = Annotated[
+    Equipment | Valve | Instrument | Junction,
+    Field(discriminator="category"),
+]
 
 
 class ConnectionEndpoint(BaseModel):
@@ -59,66 +108,108 @@ class ConnectionEndpoint(BaseModel):
 
 class Connection(BaseModel):
     id: str = Field(min_length=1)
+    kind: ConnectionKind = ConnectionKind.PROCESS
     source: ConnectionEndpoint
     target: ConnectionEndpoint
     service: str | None = None
+    logical_line: str | None = None
+
+
+class Association(BaseModel):
+    id: str = Field(min_length=1)
+    subject_id: str = Field(min_length=1)
+    relationship: str = Field(min_length=1)
+    target_id: str = Field(min_length=1)
+    target_port: str | None = None
+
+
+class ModuleInstance(BaseModel):
+    id: str = Field(min_length=1)
+    template: str = Field(min_length=1)
+    version: str = Field(default="1.0")
+    member_ids: list[str] = Field(default_factory=list)
 
 
 class PlantModel(BaseModel):
     project_id: str = Field(min_length=1)
-    equipment: list[Equipment]
+    objects: list[PlantObjectUnion]
     connections: list[Connection] = Field(default_factory=list)
+    associations: list[Association] = Field(default_factory=list)
+    modules: list[ModuleInstance] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_graph(self) -> "PlantModel":
-        ids = [e.id for e in self.equipment]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Duplicate equipment IDs are not allowed")
+    def validate_graph(self):
+        object_ids = [obj.id for obj in self.objects]
+        if len(object_ids) != len(set(object_ids)):
+            raise ValueError("Duplicate object IDs are not allowed")
 
-        tags = [e.tag for e in self.equipment]
+        tags = [obj.tag for obj in self.objects]
         if len(tags) != len(set(tags)):
-            raise ValueError("Duplicate equipment tags are not allowed")
+            raise ValueError("Duplicate object tags are not allowed")
 
         connection_ids = [c.id for c in self.connections]
         if len(connection_ids) != len(set(connection_ids)):
             raise ValueError("Duplicate connection IDs are not allowed")
 
-        by_id = {e.id: e for e in self.equipment}
+        by_id = {obj.id: obj for obj in self.objects}
         for connection in self.connections:
-            source_port = self._resolve(
-                connection.id, "source", connection.source, by_id
-            )
-            target_port = self._resolve(
-                connection.id, "target", connection.target, by_id
-            )
-            if source_port.direction == PortDirection.IN:
-                raise ValueError(
-                    f"Connection {connection.id} source port must allow output"
-                )
-            if target_port.direction == PortDirection.OUT:
-                raise ValueError(
-                    f"Connection {connection.id} target port must allow input"
-                )
+            source_port = self._resolve_endpoint(connection.id, "source", connection.source, by_id)
+            target_port = self._resolve_endpoint(connection.id, "target", connection.target, by_id)
+            self._validate_connection_ports(connection, source_port, target_port)
+
+        for association in self.associations:
+            if association.subject_id not in by_id:
+                raise ValueError(f"Association {association.id} references unknown subject '{association.subject_id}'")
+            target = by_id.get(association.target_id)
+            if target is None:
+                raise ValueError(f"Association {association.id} references unknown target '{association.target_id}'")
+            if association.target_port:
+                try:
+                    target.port(association.target_port)
+                except KeyError:
+                    raise ValueError(
+                        f"Association {association.id} references unknown target port "
+                        f"'{association.target_port}' on '{association.target_id}'"
+                    ) from None
+
+        for module in self.modules:
+            missing = sorted(set(module.member_ids) - set(by_id))
+            if missing:
+                raise ValueError(f"Module {module.id} references unknown members: {', '.join(missing)}")
 
         return self
 
     @staticmethod
-    def _resolve(
-        connection_id: str,
-        endpoint_name: str,
-        endpoint: ConnectionEndpoint,
-        by_id: dict[str, Equipment],
-    ) -> Port:
-        equipment = by_id.get(endpoint.object_id)
-        if equipment is None:
+    def _resolve_endpoint(connection_id, endpoint_name, endpoint, by_id) -> Port:
+        obj = by_id.get(endpoint.object_id)
+        if obj is None:
             raise ValueError(
-                f"Connection {connection_id} {endpoint_name} references "
-                f"unknown equipment '{endpoint.object_id}'"
+                f"Connection {connection_id} {endpoint_name} references unknown object '{endpoint.object_id}'"
             )
         try:
-            return equipment.port(endpoint.port)
+            return obj.port(endpoint.port)
         except KeyError:
             raise ValueError(
-                f"Connection {connection_id} {endpoint_name} references "
-                f"unknown port '{endpoint.port}' on equipment '{endpoint.object_id}'"
+                f"Connection {connection_id} {endpoint_name} references unknown port "
+                f"'{endpoint.port}' on object '{endpoint.object_id}'"
             ) from None
+
+    @staticmethod
+    def _validate_connection_ports(connection: Connection, source: Port, target: Port) -> None:
+        if source.direction == PortDirection.IN:
+            raise ValueError(f"Connection {connection.id} source port must allow output")
+        if target.direction == PortDirection.OUT:
+            raise ValueError(f"Connection {connection.id} target port must allow input")
+
+        if connection.kind == ConnectionKind.SIGNAL:
+            if source.kind != PortKind.SIGNAL or target.kind != PortKind.SIGNAL:
+                raise ValueError(f"Signal connection {connection.id} must use signal ports")
+        else:
+            if source.kind == PortKind.SIGNAL or target.kind == PortKind.SIGNAL:
+                raise ValueError(f"Process connection {connection.id} cannot use signal ports")
+
+    def object(self, object_id: str) -> PlantObjectUnion:
+        for obj in self.objects:
+            if obj.id == object_id:
+                return obj
+        raise KeyError(object_id)
