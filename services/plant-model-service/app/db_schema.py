@@ -95,6 +95,7 @@ class StreamRow(Base):
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
     simulation_stream_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    stream_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     source_equipment_id: Mapped[str | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)
     destination_equipment_id: Mapped[str | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)
 
