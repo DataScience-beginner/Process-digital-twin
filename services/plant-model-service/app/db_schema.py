@@ -137,6 +137,22 @@ class ProcessConfigurationRow(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+
+class PublicationStageRow(Base):
+    __tablename__ = "publication_stages"
+    __table_args__ = (
+        UniqueConstraint("project_id", "stage", name="uq_project_publication_stage"),
+    )
+    id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
+    stage: Mapped[str] = mapped_column(String(80), index=True)
+    revision: Mapped[str] = mapped_column(String(40), default="A")
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    provenance_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class EngineeringRecordRow(Base):
     __tablename__ = "engineering_records"
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
