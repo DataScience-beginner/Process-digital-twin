@@ -158,10 +158,102 @@ def test_dashboard_shows_completion_matrix_and_project_cost():
         stages = publication_status(session)
 
     html = render_dashboard_html(dossiers, stages)
-    assert "Object Completion Matrix" in html
+    assert "Primary Equipment Completion Matrix" in html
     assert "Demo project/section estimate" in html
     assert "V-101" in html
     assert "P-101" in html
     assert "FCV-101" in html
     assert "EPC / Vendor" in html
     assert "/object/EQ-P101/detail" in html
+
+
+
+def test_engineering_view_keeps_stage_buttons_tabs_properties_and_detail_as_additive():
+    engine = _published_engine()
+    model = demo_integrated_configuration_model()
+    plan = build_drafter_instrumented(model)
+    cleanup = build_cleanup(plan)
+
+    with Session(engine) as session:
+        dossiers = {
+            object_id: load_object_dossier(session, object_id)
+            for object_id in OBJECT_IDS
+        }
+        stages = publication_status(session)
+
+    html = render_clean_pid_html(
+        model,
+        plan,
+        cleanup,
+        dossiers,
+        publication_stages=stages,
+    )
+
+    for label in [
+        "Publish Design Basis",
+        "Publish Simulation",
+        "Select Configuration",
+        "Publish Process / Safety",
+        "Publish Instrumentation / DCS",
+        "Publish Technical / Mechanical",
+        "Publish Cost Estimate",
+        "Publish All",
+        "Tabs",
+        "Properties",
+        "Technical / Mechanical",
+        "Cost Estimate",
+        "↗ Detailed View",
+        "⧉ Pop out",
+    ]:
+        assert label in html
+
+
+def test_technical_and_cost_records_have_full_detail_metadata():
+    engine = _published_engine()
+    with Session(engine) as session:
+        vessel = load_object_dossier(session, "EQ-V101")
+        pump = load_object_dossier(session, "EQ-P101")
+
+    all_vessel = [
+        record
+        for records in vessel.records.values()
+        for record in records
+    ]
+    all_pump = [
+        record
+        for records in pump.records.values()
+        for record in records
+    ]
+
+    mech_vessel = next(record for record in all_vessel if record.id == "MECH-V101")
+    mech_pump = next(record for record in all_pump if record.id == "MECH-P101")
+    cost_vessel = next(record for record in all_vessel if record.id == "COST-V101")
+    cost_pump = next(record for record in all_pump if record.id == "COST-P101")
+
+    for record in [mech_vessel, mech_pump, cost_vessel, cost_pump]:
+        detail = record.metadata["calculation_detail"]
+        assert detail["inputs"]
+        assert detail["criteria"]
+        assert detail["outputs"]
+        assert detail["method"]
+
+
+def test_dashboard_rolls_child_instruments_and_valves_into_primary_equipment():
+    engine = _published_engine()
+    with Session(engine) as session:
+        dossiers = {
+            object_id: load_object_dossier(session, object_id)
+            for object_id in OBJECT_IDS
+        }
+        stages = publication_status(session)
+
+    html = render_dashboard_html(dossiers, stages)
+    assert "Primary equipment" in html
+    assert "Small valves/instruments are child objects" in html
+    assert "PSV-101" in html
+    assert "LCV-101" in html
+    assert "FCV-101" in html
+    # Only the two major equipment detail links should be dashboard rows.
+    assert html.count('/object/EQ-V101/detail') == 1
+    assert html.count('/object/EQ-P101/detail') == 1
+    assert '/object/VLV-FCV101/detail' not in html
