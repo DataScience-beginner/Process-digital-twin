@@ -269,7 +269,7 @@ Goal: make the Digital BDEP calculation viewer feel like an in-house engineering
 
 ## MVP 0.12 — Engineering Export Layer
 - [x] PDF calculation/datasheet export
-- [ ] Standalone SVG engineering drawing export (SVG currently rendered inside Engineering HTML)
+- [x] Standalone SVG engineering drawing export
 - [ ] DEXPI 2.x XML exporter: semantic prototype complete; official schema/profile validation still pending
 - [x] Visio adapter / VDX or VSDX mapping
 - [x] CAD DXF exporter
@@ -297,7 +297,7 @@ Goal: make the Digital BDEP calculation viewer feel like an in-house engineering
 - [x] Mechanical / technical summary
 - [x] Cost summary
 - [x] Publication / completion summary
-- [ ] Export summaries to HTML / CSV / PDF (HTML + CSV complete; consolidated summary PDF still pending)
+- [x] Export summaries to HTML / CSV / PDF
 
 ## MVP 1.0 — Vendor / EPC Information Thread
 - [ ] Vendor enquiry package inputs
