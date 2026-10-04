@@ -73,7 +73,7 @@ SYMBOLS: dict[str, SymbolMaster] = {
         key="instrument.flow_transmitter_inline", width=34, height=34,
         anchors={"INLET": (0.0, 0.5), "OUTLET": (1.0, 0.5), "SIGNAL_OUT": (0.5, 0.0)},
     ),
-    "junction.branch": SymbolMaster(
+    "nozzle.process_nozzle": SymbolMaster(\n        key="nozzle.process_nozzle", width=8, height=8,\n        anchors={"CONNECTION": (0.5, 0.5)},\n    ),\n    "nozzle.instrument_nozzle": SymbolMaster(\n        key="nozzle.instrument_nozzle", width=8, height=8,\n        anchors={"CONNECTION": (0.5, 0.5)},\n    ),\n    "nozzle.access_nozzle": SymbolMaster(\n        key="nozzle.access_nozzle", width=8, height=8,\n        anchors={"CONNECTION": (0.5, 0.5)},\n    ),\n    "junction.branch": SymbolMaster(
         key="junction.branch", width=8, height=8,
         anchors={"INLET": (0.0, 0.5), "MAIN_OUT": (1.0, 0.5), "RECYCLE_OUT": (0.5, 0.0)},
     ),
