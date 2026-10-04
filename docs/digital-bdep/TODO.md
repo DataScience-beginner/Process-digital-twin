@@ -123,7 +123,46 @@ Every displayed value must show where it came from. ✅ Implemented for the firs
 - [x] Verify compiled graph passes the connected drafter workflow
 - [x] Add compiler trace viewer
 
-## MVP 0.9 — Change / Impact Intelligence
+## MVP 0.9 — Staged Discipline Publishing
+Goal: complete the multidisciplinary engineering publish backbone before change management.
+
+- [x] Persistent publication stages and dependencies
+- [x] Publish Design Basis
+- [x] Publish Simulation
+- [x] Select / publish approved Configuration
+- [x] Publish Process / Safety data
+  - [x] vessel preliminary holdup sizing
+  - [x] pump rated duty
+  - [x] PSV structured relief basis
+  - [x] final PSV orifice sizing explicitly reserved for a qualified relief service
+- [x] Publish Instrumentation / DCS
+  - [x] FCV preliminary deterministic Cv sizing
+  - [x] FT range basis
+  - [x] FIC minimum-flow DCS loop details
+  - [x] LIC vessel-level DCS loop details
+- [x] Publish Mechanical
+  - [x] V-101 preliminary mechanical datasheet basis
+  - [x] P-101 preliminary package datasheet basis
+- [x] Publish Costing
+  - [x] object-level demo parametric estimates
+  - [x] section total
+  - [x] explicit provenance and non-commercial demo status
+- [x] Publish All executes the controlled stage order
+- [x] Engineering View retains the connected P&ID while showing the publishing toolbar
+- [x] PSV, LCV, FT, FIC, LT, LIC and PT are selectable in the object inspector
+- [x] Published values remain object-specific and provenance-linked
+
+## MVP 1.0 — Vendor / EPC Information Thread
+- [ ] Vendor enquiry package inputs
+- [ ] Vendor document register
+- [ ] Vendor datasheet / offer comparison
+- [ ] Vendor deviations and TQs
+- [ ] Selected vendor data writeback
+- [ ] EPC comments / actions / approvals
+- [ ] Procurement / fabrication status
+- [ ] Preserve licensor vs vendor ownership of each value
+
+## MVP 1.1 — Change / Impact Intelligence
 - [ ] Criterion change -> affected objects
 - [ ] Simulation result change -> affected calculations / equipment
 - [ ] Affected / Update Required states
@@ -131,14 +170,9 @@ Every displayed value must show where it came from. ✅ Implemented for the firs
 - [ ] Semantic revision diff
 - [ ] Revision-cloud generation from changed semantic objects
 
-## MVP 1.0 — Calculation and Discipline Thread
-- [ ] Deterministic process calculations
-- [ ] Instrument sizing
-- [ ] Mechanical / electrical interfaces
-- [ ] Cost records
-- [ ] EPC / vendor data
+## Later lifecycle thread
 - [ ] Operations / historian mappings
-- [ ] approval / revision / audit trail
+- [ ] approval / revision / audit trail hardening
 
 ## Non-negotiable rules
 1. Design Basis is structured engineering data, not only a PDF.
