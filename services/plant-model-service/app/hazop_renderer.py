@@ -5,6 +5,27 @@ import html
 from .hazop import build_demo_hazop, hazop_rows_for_entity
 
 
+_CALC_ENTITY = {
+    "RELIEF-PSV101-BASIS": "VLV-PSV101",
+    "CALC-V101-HOLDUP": "EQ-V101",
+    "CALC-P101-RATED-FLOW": "EQ-P101",
+    "CALC-FCV101-CV": "VLV-FCV101",
+    "LINE-1102-SIZING": "LINE-1102",
+    "LINE-1103-SIZING": "LINE-1103",
+    "LINE-1190-SIZING": "LINE-1190",
+}
+
+
+def _calc_link(calc_id: str) -> str:
+    entity_id = _CALC_ENTITY.get(calc_id)
+    if entity_id is None:
+        return f'<span class="calc">{html.escape(calc_id)}</span>'
+    return (
+        f'<a class="calc" href="/workspace/{html.escape(entity_id)}#calc-{html.escape(calc_id)}">'
+        f'{html.escape(calc_id)}</a>'
+    )
+
+
 def _entity_links(items):
     links = []
     for item in items:
@@ -32,7 +53,7 @@ def render_hazop_html() -> str:
                 for item in row["safeguards"]
             )
             calculations = " ".join(
-                f'<span class="calc">{html.escape(calc_id)}</span>'
+                _calc_link(calc_id)
                 for calc_id in row["linked_calculations"]
             ) or "—"
             rows.append(
@@ -97,7 +118,7 @@ main{{padding:12px;max-width:1800px;margin:auto}}
 .node-head{{display:grid;grid-template-columns:1fr auto;gap:10px;border-bottom:1px solid #ddd;padding-bottom:8px}}
 .node h2{{font-size:13px;margin:0}} .intent{{font-size:9px;color:#475569;margin-top:4px;max-width:950px}}
 .entity-list{{max-width:480px;text-align:right}} .entity{{display:inline-block;font-size:8px;padding:3px 5px;border:1px solid #93c5fd;border-radius:999px;color:#174a77;text-decoration:none;margin:2px}}
-.links{{margin-top:3px}} .calc{{font-size:8px;background:#f1f5f9;border:1px solid #cbd5e1;padding:2px 4px;display:inline-block;margin:1px}}
+.links{{margin-top:3px}} .calc{{font-size:8px;background:#f1f5f9;border:1px solid #cbd5e1;padding:2px 4px;display:inline-block;margin:1px;color:#174a77;text-decoration:none}}
 table{{border-collapse:collapse;width:100%;font-size:8px}} th,td{{border:1px solid #ddd;padding:5px;text-align:left;vertical-align:top;min-width:70px}} th{{background:#f1f5f9;position:sticky;top:0}}
 .scroll{{overflow:auto;max-height:520px;margin-top:8px}}
 </style>
