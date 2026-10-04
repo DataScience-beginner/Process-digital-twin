@@ -13,7 +13,9 @@ from app.exporters import (
     export_dxf_demo,
     export_summary_csv,
     export_visio_vdx_demo,
+    extract_svg_document,
     simple_text_pdf,
+    summary_pdf_lines,
     workspace_pdf_lines,
 )
 from app.hazop import build_demo_hazop, hazop_rows_for_entity
@@ -289,3 +291,28 @@ def test_line_sizing_is_full_hydraulic_trace_not_velocity_only():
         if row["candidate_nps_in"] == 8.0
     )
     assert {"reynolds", "friction_factor", "friction_dp_bar"} <= set(detail["case_results"][0])
+
+
+
+def test_standalone_svg_and_consolidated_summary_pdf_exports():
+    model, plan, engine, dossiers, inspection = _context()
+    summaries = build_bdep_summaries(
+        model=model,
+        dossiers=dossiers,
+        inspection=inspection,
+    )
+
+    mock_html = '<!doctype html><html><body><svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="100" y2="100"/></svg></body></html>'
+    svg = extract_svg_document(mock_html)
+    assert svg.startswith(b'<?xml version="1.0"')
+    assert b'xmlns="http://www.w3.org/2000/svg"' in svg
+    assert b"<line" in svg
+
+    lines = summary_pdf_lines(summaries)
+    assert any("EQUIPMENT LIST" in line for line in lines)
+    assert any("LINE LIST" in line for line in lines)
+    assert any("PSV / RELIEF SUMMARY" in line for line in lines)
+
+    pdf = simple_text_pdf("Digital BDEP Summaries", lines)
+    assert pdf.startswith(b"%PDF-1.4")
+    assert len(pdf) > 1500
