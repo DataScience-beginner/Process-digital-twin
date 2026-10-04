@@ -168,4 +168,4 @@ def test_internal_and_client_views_are_separate():
     assert "BDEP-R03" in client_html
     assert "ECP-2026-0142" not in client_html
     assert "Integration Queue" not in client_html
-    assert "internal reviews" in client_html
+    assert "formally released engineering information" in client_html
