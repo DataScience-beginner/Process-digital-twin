@@ -14,8 +14,8 @@
 ## MVP 0.6A — Design Basis + Object-Centric Digital Thread
 Goal: make Design Basis criteria structured, queryable and directly connected to the engineering objects they govern.
 
-- [ ] Define structured Design Basis model
-- [ ] Define criterion categories:
+- [x] Define structured Design Basis model
+- [x] Define criterion categories:
   - feed / battery-limit conditions
   - operating and design cases
   - flow / sizing margins
@@ -27,19 +27,19 @@ Goal: make Design Basis criteria structured, queryable and directly connected to
   - materials criteria
   - utilities / ambient criteria
   - applicable standards / company practices
-- [ ] Every criterion has:
+- [x] Every criterion has:
   - immutable ID
   - value + unit
   - revision / status
   - source / provenance
   - applicability scope
   - explicit target object IDs where needed
-- [ ] Add V-101 relevant criteria
-- [ ] Add P-101 relevant criteria
-- [ ] Add FCV-101 relevant criteria
-- [ ] Add object dossier API returning only criteria relevant to selected object
-- [ ] Add provenance for every displayed value
-- [ ] Unit tests: object-specific criteria must not leak to unrelated objects
+- [x] Add V-101 relevant criteria
+- [x] Add P-101 relevant criteria
+- [x] Add FCV-101 relevant criteria
+- [x] Add object dossier API returning only criteria relevant to selected object
+- [x] Add provenance for every displayed value
+- [x] Unit tests: object-specific criteria must not leak to unrelated objects
 
 ## MVP 0.6B — Simulation Publisher
 Goal: prove that the upstream process topology comes from a simulation-like source, not from the P&ID.
@@ -56,10 +56,10 @@ Goal: prove that the upstream process topology comes from a simulation-like sour
 ## MVP 0.6C — PostgreSQL Canonical Process Database
 Goal: persist Design Basis, simulation results, plant objects and provenance.
 
-- [ ] SQLAlchemy 2.x persistence layer
-- [ ] PostgreSQL connection via DATABASE_URL
+- [x] SQLAlchemy 2.x persistence layer
+- [x] PostgreSQL connection via DATABASE_URL
 - [ ] Alembic migrations
-- [ ] Core tables:
+- [x] Core tables:
   - projects
   - design_basis_revisions
   - design_basis_criteria
@@ -71,8 +71,8 @@ Goal: persist Design Basis, simulation results, plant objects and provenance.
   - stream_components
   - engineering_records
   - record_object_links
-- [ ] Keep flexible supplemental attributes in JSONB only where appropriate
-- [ ] Database tests use isolated test DB / SQLite-compatible schema where possible
+- [x] Keep flexible supplemental attributes in JSON/JSONB-compatible columns only where appropriate
+- [x] Database tests use isolated test DB / SQLite-compatible schema where possible
 
 ## MVP 0.6D — Object-Centric Viewer Sidebar
 Goal: clicking an engineering object opens its complete Digital BDEP thread without showing the entire project.
