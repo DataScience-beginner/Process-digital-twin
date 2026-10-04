@@ -1,0 +1,340 @@
+from __future__ import annotations
+
+from collections import defaultdict
+
+from .models import PlantModel
+from .thread_models import (
+    CriterionCategory,
+    DesignBasisCriterion,
+    DesignCase,
+    EngineeringRecord,
+    ObjectDossier,
+    Provenance,
+    RecordDomain,
+)
+
+
+DESIGN_CASES = [
+    DesignCase(id="CASE-NORMAL", name="Normal Operation", case_type="normal", design_basis_revision="A"),
+    DesignCase(id="CASE-MAX", name="Maximum Throughput", case_type="maximum", design_basis_revision="A"),
+    DesignCase(id="CASE-TURNDOWN", name="Turndown", case_type="turndown", design_basis_revision="A"),
+]
+
+
+DESIGN_BASIS_CRITERIA = [
+    DesignBasisCriterion(
+        id="DBC-FEED-CAPACITY",
+        name="Design feed capacity",
+        category=CriterionCategory.FEED,
+        value=115.0,
+        unit="t/h",
+        target_object_ids=["EQ-V101"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-BL-FEED-PRESSURE",
+        name="Feed battery-limit pressure",
+        category=CriterionCategory.BATTERY_LIMIT,
+        value=4.5,
+        unit="barg",
+        target_object_ids=["EQ-V101"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-VESSEL-SIZING-MARGIN",
+        name="Vessel sizing flow margin",
+        category=CriterionCategory.VESSEL,
+        value=10.0,
+        unit="%",
+        applies_to_types=["vertical_separator"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-VESSEL-HOLDUP",
+        name="Normal liquid holdup criterion",
+        category=CriterionCategory.VESSEL,
+        value=5.0,
+        unit="min",
+        applies_to_types=["vertical_separator"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-VESSEL-DP-MARGIN",
+        name="Vessel design pressure margin",
+        category=CriterionCategory.VESSEL,
+        value=10.0,
+        unit="%",
+        applies_to_types=["vertical_separator"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-VESSEL-DT-MARGIN",
+        name="Vessel design temperature margin",
+        category=CriterionCategory.VESSEL,
+        value=15.0,
+        unit="degC",
+        applies_to_types=["vertical_separator"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-VESSEL-CODE",
+        name="Pressure vessel design code",
+        category=CriterionCategory.STANDARD,
+        value="ASME VIII Div. 1",
+        applies_to_types=["vertical_separator"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-PUMP-FLOW-MARGIN",
+        name="Pump rated flow margin",
+        category=CriterionCategory.FLOW_MARGIN,
+        value=10.0,
+        unit="%",
+        applies_to_types=["centrifugal_pump"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-PUMP-HEAD-MARGIN",
+        name="Pump differential head margin",
+        category=CriterionCategory.PUMP,
+        value=5.0,
+        unit="%",
+        applies_to_types=["centrifugal_pump"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-PUMP-NPSH-MARGIN",
+        name="Minimum NPSH margin",
+        category=CriterionCategory.PUMP,
+        value=1.0,
+        unit="m",
+        applies_to_types=["centrifugal_pump"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-PUMP-MIN-FLOW",
+        name="Minimum-flow protection required",
+        category=CriterionCategory.PUMP,
+        value=True,
+        applies_to_types=["centrifugal_pump"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-CV-NORMAL-OPENING",
+        name="Target control-valve opening at normal case",
+        category=CriterionCategory.CONTROL_VALVE,
+        value=60.0,
+        unit="%",
+        target_object_ids=["VLV-FCV101", "VLV-LCV101"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-CV-MAX-OPENING",
+        name="Maximum-case control-valve opening limit",
+        category=CriterionCategory.CONTROL_VALVE,
+        value=85.0,
+        unit="%",
+        target_object_ids=["VLV-FCV101", "VLV-LCV101"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+    DesignBasisCriterion(
+        id="DBC-CV-FAIL-FCV101",
+        name="Minimum-flow control valve fail position",
+        category=CriterionCategory.CONTROL_VALVE,
+        value="open",
+        target_object_ids=["VLV-FCV101"],
+        provenance=Provenance(source_type="design_basis", source_id="DB-001", source_revision="A"),
+    ),
+]
+
+
+ENGINEERING_RECORDS = [
+    EngineeringRecord(
+        id="SIM-V101-P-NORMAL",
+        object_id="EQ-V101",
+        domain=RecordDomain.SIMULATION,
+        name="Operating pressure",
+        value=3.8,
+        unit="barg",
+        status="calculated",
+        provenance=Provenance(source_type="simulation_case", source_id="SIM-001", source_revision="A", note="Normal case"),
+    ),
+    EngineeringRecord(
+        id="SIM-V101-T-NORMAL",
+        object_id="EQ-V101",
+        domain=RecordDomain.SIMULATION,
+        name="Operating temperature",
+        value=72.0,
+        unit="degC",
+        status="calculated",
+        provenance=Provenance(source_type="simulation_case", source_id="SIM-001", source_revision="A", note="Normal case"),
+    ),
+    EngineeringRecord(
+        id="CALC-V101-SIZE",
+        object_id="EQ-V101",
+        domain=RecordDomain.PROCESS_CALC,
+        name="Vessel sizing calculation",
+        value="CALC-V101-001",
+        status="process_checked",
+        provenance=Provenance(
+            source_type="calculation",
+            source_id="CALC-V101-001",
+            source_revision="B",
+            method="separator sizing service",
+        ),
+    ),
+    EngineeringRecord(
+        id="PID-V101",
+        object_id="EQ-V101",
+        domain=RecordDomain.PID,
+        name="P&ID representation",
+        value="PID-DEMO-001",
+        status="working",
+        provenance=Provenance(source_type="drawing", source_id="PID-DEMO-001", source_revision="A"),
+    ),
+    EngineeringRecord(
+        id="MECH-V101",
+        object_id="EQ-V101",
+        domain=RecordDomain.MECHANICAL,
+        name="Mechanical datasheet",
+        value="TBD",
+        status="placeholder",
+        provenance=Provenance(source_type="workflow", source_id="MECH-DATASHEET-V101"),
+    ),
+    EngineeringRecord(
+        id="COST-V101",
+        object_id="EQ-V101",
+        domain=RecordDomain.COST,
+        name="Class estimate",
+        value="TBD",
+        status="placeholder",
+        provenance=Provenance(source_type="workflow", source_id="COST-V101"),
+    ),
+    EngineeringRecord(
+        id="SIM-P101-FLOW-MAX",
+        object_id="EQ-P101",
+        domain=RecordDomain.SIMULATION,
+        name="Maximum-case suction flow",
+        value=118.0,
+        unit="t/h",
+        status="calculated",
+        provenance=Provenance(source_type="simulation_case", source_id="SIM-002", source_revision="A", note="Maximum case"),
+    ),
+    EngineeringRecord(
+        id="CALC-P101-RATED-FLOW",
+        object_id="EQ-P101",
+        domain=RecordDomain.PROCESS_CALC,
+        name="Rated flow",
+        value=129.8,
+        unit="t/h",
+        status="process_checked",
+        provenance=Provenance(
+            source_type="calculation",
+            source_id="CALC-P101-001",
+            source_revision="A",
+            method="maximum simulated flow + design basis pump margin",
+        ),
+    ),
+    EngineeringRecord(
+        id="INST-P101-MINFLOW",
+        object_id="EQ-P101",
+        domain=RecordDomain.INSTRUMENTATION,
+        name="Minimum-flow protection loop",
+        value="FT-101 / FIC-101 / FCV-101",
+        status="working",
+        provenance=Provenance(source_type="pid_configuration", source_id="PUMP_MIN_FLOW_STANDARD_V1", source_revision="1"),
+    ),
+    EngineeringRecord(
+        id="ELEC-P101",
+        object_id="EQ-P101",
+        domain=RecordDomain.ELECTRICAL,
+        name="Motor sizing",
+        value="TBD",
+        status="placeholder",
+        provenance=Provenance(source_type="workflow", source_id="MOTOR-SIZING-P101"),
+    ),
+    EngineeringRecord(
+        id="EPC-P101",
+        object_id="EQ-P101",
+        domain=RecordDomain.EPC_VENDOR,
+        name="Vendor package",
+        value="Not issued",
+        status="placeholder",
+        provenance=Provenance(source_type="workflow", source_id="VENDOR-P101"),
+    ),
+    EngineeringRecord(
+        id="OPS-P101",
+        object_id="EQ-P101",
+        domain=RecordDomain.OPERATIONS,
+        name="Operating historian mapping",
+        value="TBD",
+        status="placeholder",
+        provenance=Provenance(source_type="workflow", source_id="OPS-P101"),
+    ),
+    EngineeringRecord(
+        id="SIM-FCV101-DP",
+        object_id="VLV-FCV101",
+        domain=RecordDomain.SIMULATION,
+        name="Available pressure drop",
+        value=1.2,
+        unit="bar",
+        status="calculated",
+        provenance=Provenance(source_type="simulation_case", source_id="SIM-002", source_revision="A", note="Maximum case"),
+    ),
+    EngineeringRecord(
+        id="CALC-FCV101-CV",
+        object_id="VLV-FCV101",
+        domain=RecordDomain.PROCESS_CALC,
+        name="Control valve Cv sizing",
+        value="TBD",
+        status="placeholder",
+        provenance=Provenance(source_type="calculation", source_id="CALC-FCV101-001", method="control valve sizing service"),
+    ),
+    EngineeringRecord(
+        id="INST-FCV101",
+        object_id="VLV-FCV101",
+        domain=RecordDomain.INSTRUMENTATION,
+        name="Control loop",
+        value="FT-101 -> FIC-101 -> FCV-101",
+        status="working",
+        provenance=Provenance(source_type="pid_configuration", source_id="PUMP_MIN_FLOW_STANDARD_V1", source_revision="1"),
+    ),
+]
+
+
+def _object_type(obj) -> str | None:
+    for attr in ("equipment_type", "valve_type", "instrument_type", "junction_type", "nozzle_type"):
+        value = getattr(obj, attr, None)
+        if value is not None:
+            return value.value
+    return None
+
+
+def build_object_dossier(model: PlantModel, object_id: str) -> ObjectDossier:
+    obj = model.object(object_id)
+    object_type = _object_type(obj)
+
+    criteria = [
+        criterion
+        for criterion in DESIGN_BASIS_CRITERIA
+        if criterion.applies_to(
+            object_id=obj.id,
+            category=obj.category,
+            object_type=object_type,
+        )
+    ]
+
+    grouped: dict[RecordDomain, list[EngineeringRecord]] = defaultdict(list)
+    for record in ENGINEERING_RECORDS:
+        if record.object_id == obj.id:
+            grouped[record.domain].append(record)
+
+    return ObjectDossier(
+        object_id=obj.id,
+        tag=obj.tag,
+        category=obj.category,
+        object_type=object_type,
+        service=obj.service,
+        design_basis=criteria,
+        records=dict(grouped),
+    )
