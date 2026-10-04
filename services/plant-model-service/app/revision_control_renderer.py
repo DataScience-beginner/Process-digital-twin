@@ -96,7 +96,7 @@ table{{border-collapse:collapse;width:100%;font-size:8.5px}} th,td{{border:1px s
 .flow{{font-size:9px;background:#f8fafc;border:1px solid #dbe1e8;padding:9px;line-height:1.7}}
 </style></head>
 <body>
-<header><div><strong>Digital BDEP — Engineering Revision, Review & Client Issue Control</strong><div class="meta">Engineering terminology in the UI; Git-like mechanics remain an implementation detail.</div></div><nav><a href="/engineering">Engineering Workspace</a><a href="/client">Client View</a></nav></header>
+<header><div><strong>Digital BDEP — Engineering Revision, Review & Client Issue Control</strong><div class="meta">Engineering / digital-plant terminology throughout the user interface.</div></div><nav><a href="/engineering">Engineering Workspace</a><a href="/client">Client View</a></nav></header>
 <main>
 <section class="hero">
 <div><h1>Approved Engineering Baseline: {_esc(baseline.get("revision"))}</h1><div class="meta">Baseline ID {_esc(baseline.get("id"))} · Model hash {_esc((baseline.get("model_hash") or "")[:20])}…</div>
