@@ -604,6 +604,42 @@ def publish_process(session: Session) -> PublicationResult:
             source_id="CALC-V101-HOLDUP",
             method="max liquid flow × vessel margin; volumetric flow × holdup time",
             object_ids=["EQ-V101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Published liquid stream", "value": "1102 / S-102"},
+                    {"name": "Maximum liquid flow", "value": round(n["max_liquid_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Liquid density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-VESSEL-SIZING-MARGIN", "name": "Vessel sizing flow margin", "value": _criterion(session, "DBC-VESSEL-SIZING-MARGIN"), "unit": "%"},
+                    {"criterion_id": "DBC-VESSEL-HOLDUP", "name": "Liquid holdup criterion", "value": _criterion(session, "DBC-VESSEL-HOLDUP"), "unit": "min"},
+                ],
+                case_results=[
+                    {
+                        **row,
+                        "design_flow_tph": round(row["mass_flow_tph"] * (1.0 + float(_criterion(session, "DBC-VESSEL-SIZING-MARGIN")) / 100.0), 3),
+                        "required_holdup_volume_m3": round(
+                            (
+                                row["mass_flow_tph"]
+                                * (1.0 + float(_criterion(session, "DBC-VESSEL-SIZING-MARGIN")) / 100.0)
+                                * 1000.0
+                                / row["density_kgm3"]
+                            )
+                            * float(_criterion(session, "DBC-VESSEL-HOLDUP"))
+                            / 60.0,
+                            3,
+                        ),
+                    }
+                    for row in _stream_case_table("STR-S102")
+                ],
+                governing_case="Maximum",
+                governing_reason="Maximum case has the highest published liquid flow and therefore the largest preliminary liquid-holdup requirement.",
+                outputs=[
+                    {"name": "Design liquid flow", "value": round(n["vessel_design_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Required holdup volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+                ],
+                method="Deterministic preliminary holdup sizing service.",
+            ),
         )
     )
     record_ids.append(
@@ -624,6 +660,49 @@ def publish_process(session: Session) -> PublicationResult:
             source_id="CALC-P101-001",
             method="maximum simulated duty + Design Basis margins",
             object_ids=["EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Pump suction stream", "value": "1102 / S-102"},
+                    {"name": "Pump discharge stream", "value": "1103 / S-103"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-PUMP-FLOW-MARGIN", "name": "Rated-flow margin", "value": _criterion(session, "DBC-PUMP-FLOW-MARGIN"), "unit": "%"},
+                    {"criterion_id": "DBC-PUMP-HEAD-MARGIN", "name": "Head margin", "value": _criterion(session, "DBC-PUMP-HEAD-MARGIN"), "unit": "%"},
+                    {"criterion_id": "DBC-PUMP-EFFICIENCY", "name": "Preliminary efficiency", "value": _criterion(session, "DBC-PUMP-EFFICIENCY"), "unit": "%"},
+                    {"criterion_id": "DBC-MOTOR-MARGIN", "name": "Motor margin", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                ],
+                case_results=[
+                    {
+                        "case": label,
+                        "design_case_id": design_case_id,
+                        "simulation_case_id": pub.simulation_case_id,
+                        "suction_flow_tph": round(suc.mass_flow, 3),
+                        "suction_pressure_barg": round(suc.pressure, 3),
+                        "discharge_pressure_barg": round(dis.pressure, 3),
+                        "raw_differential_head_m": round(
+                            (dis.pressure - suc.pressure) * 100000.0 / (float(suc.density) * 9.80665),
+                            3,
+                        ),
+                    }
+                    for design_case_id, label in [
+                        ("CASE-NORMAL", "Normal"),
+                        ("CASE-MAX", "Maximum"),
+                        ("CASE-TURNDOWN", "Turndown"),
+                    ]
+                    for pub in [publish_demo_simulation(design_case_id)]
+                    for suc in [next(item for item in pub.streams if item.id == "STR-S102")]
+                    for dis in [next(item for item in pub.streams if item.id == "STR-S103")]
+                ],
+                governing_case="Maximum",
+                governing_reason="Maximum case has the highest published liquid flow and largest pump differential pressure in the current simulation set.",
+                outputs=[
+                    {"name": "Rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Rated head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                    {"name": "Shaft power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                    {"name": "Preliminary motor", "value": round(n["motor_preliminary_kw"], 3), "unit": "kW"},
+                ],
+                method="Deterministic pump duty publisher using simulation cases plus approved margins.",
+            ),
         )
     )
 
@@ -649,9 +728,107 @@ def publish_process(session: Session) -> PublicationResult:
             source_id="RELIEF-PSV101-001",
             method="structured relief-basis publisher; no AI orifice sizing",
             object_ids=["EQ-V101", "VLV-PSV101"],
-            metadata={"safety_critical": True, "qualified_service_required": True},
+            metadata={
+                "safety_critical": True,
+                "qualified_service_required": True,
+                "calculation_detail": {
+                    "inputs": [
+                        {"name": "Maximum feed stream", "value": "1100 / S-100"},
+                        {"name": "Maximum published feed", "value": round(feed.mass_flow, 3), "unit": "t/h"},
+                        {"name": "Preliminary set pressure", "value": psv_set, "unit": "barg"},
+                    ],
+                    "criteria": [
+                        {"criterion_id": "DBC-PSV-SET-PRESSURE", "name": "Preliminary set pressure", "value": psv_set, "unit": "barg"},
+                        {"criterion_id": "DBC-PSV-ACCUMULATION", "name": "Accumulation allowance", "value": accumulation, "unit": "%"},
+                    ],
+                    "relief_scenarios": [
+                        {
+                            "scenario": "Blocked vapor outlet",
+                            "why_considered": "The separator can continue receiving feed while the normal vapor outlet path is unavailable, creating a credible vessel overpressure mechanism.",
+                            "screening_status": "Evaluated in MVP screening",
+                            "screening_load_tph": round(feed.mass_flow, 3),
+                            "data_gap": "Final dynamic/steady relieving load and backpressure require the qualified relief service.",
+                        },
+                        {
+                            "scenario": "External fire",
+                            "why_considered": "A liquid-containing pressure vessel may experience vapor generation during external fire exposure if the project fire case is applicable.",
+                            "screening_status": "Requires qualified relief analysis",
+                            "screening_load_tph": None,
+                            "data_gap": "Wetted area, insulation/environment factor, latent heat and fire-zone applicability are not yet published.",
+                        },
+                        {
+                            "scenario": "Upstream overpressure / control failure",
+                            "why_considered": "An upstream source or failed-open control element can expose the vessel to pressure above its allowable basis.",
+                            "screening_status": "Requires source-pressure review",
+                            "screening_load_tph": None,
+                            "data_gap": "Upstream source pressure, restriction/Cv and safeguarding credits are not yet available.",
+                        },
+                        {
+                            "scenario": "Blocked liquid outlet / liquid accumulation",
+                            "why_considered": "Loss of liquid withdrawal can raise vessel level and may interact with feed/vapor handling or other safeguards; it must be checked in the relief scenario register.",
+                            "screening_status": "Scenario register only",
+                            "screening_load_tph": None,
+                            "data_gap": "Overpressure consequence depends on vapor outlet availability, feed control and trip philosophy.",
+                        },
+                    ],
+                    "preliminary_selected_scenario": "Blocked vapor outlet",
+                    "selection_reason": "Selected only as the current MVP screening scenario because the published demo model contains feed and vessel flow data for this path. It is not declared the final governing relief case.",
+                    "outputs": [
+                        {"name": "Preliminary screening load", "value": round(feed.mass_flow, 3), "unit": "t/h"},
+                        {"name": "Final governing scenario", "value": "TBD by qualified relief study"},
+                        {"name": "Final orifice area", "value": "TBD by qualified deterministic relief sizing service"},
+                    ],
+                    "method": "Structured relief-scenario screening; no AI orifice sizing.",
+                },
+            },
         )
     )
+
+    line_records = _line_sizing_records(session, n)
+    for line in line_records:
+        record_ids.append(
+            _upsert_record(
+                session,
+                record_id=line["record_id"],
+                domain=RecordDomain.PROCESS_CALC,
+                name=f'Line sizing — {line["service"]}',
+                value={
+                    "line_number": line["line_number"],
+                    "stream_number": line["stream_number"],
+                    "selected_nps_in": line["selected_nps_in"],
+                    "required_diameter_in": round(line["required_diameter_in"], 3),
+                    "design_velocity_ms": round(line["design_velocity_ms"], 3),
+                    "velocity_limit_ms": line["criterion_velocity_ms"],
+                },
+                unit=None,
+                status="process_checked_demo",
+                source_id=line["record_id"],
+                method="deterministic liquid velocity line-sizing service",
+                object_ids=line["object_ids"],
+                metadata=_calculation_detail(
+                    inputs=[
+                        {"name": "Service", "value": line["service"]},
+                        {"name": "Stream number", "value": line["stream_number"] or "Derived recycle line"},
+                        {"name": "Simulator stream", "value": line["simulator_stream_id"] or "Not a direct simulator stream"},
+                    ],
+                    criteria=[
+                        {"name": "Maximum velocity", "value": line["criterion_velocity_ms"], "unit": "m/s"},
+                        {"criterion_id": "DBC-LINE-FLUID-CODE", "name": "Fluid code", "value": _criterion(session, "DBC-LINE-FLUID-CODE")},
+                        {"criterion_id": "DBC-LINE-PIPING-CLASS", "name": "Piping class", "value": _criterion(session, "DBC-LINE-PIPING-CLASS")},
+                    ],
+                    case_results=line["case_results"],
+                    governing_case=line["governing_case"],
+                    governing_reason=line["governing_reason"],
+                    outputs=[
+                        {"name": "Line number", "value": line["line_number"]},
+                        {"name": "Required diameter", "value": round(line["required_diameter_in"], 3), "unit": "in"},
+                        {"name": "Selected NPS", "value": line["selected_nps_in"], "unit": "in"},
+                        {"name": "Design velocity", "value": round(line["design_velocity_ms"], 3), "unit": "m/s"},
+                    ],
+                    method="Screening line sizing from published liquid density/flow and Design Basis velocity criterion; nominal NPS used as diameter for MVP.",
+                ),
+            )
+        )
 
     result = _set_stage(
         session,
@@ -662,6 +839,7 @@ def publish_process(session: Session) -> PublicationResult:
             "pump_rated_flow_tph": round(n["pump_rated_flow_tph"], 3),
             "pump_rated_head_m": round(n["pump_rated_head_m"], 3),
             "psv_basis": "published; final relief sizing service pending qualification",
+            "line_numbers": [line["line_number"] for line in line_records],
         },
     )
     result.records_written = record_ids
