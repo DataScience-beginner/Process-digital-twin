@@ -487,7 +487,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 </aside>
 <template id="drawingQualityTemplate">
   <div class="property-group">
-    <div class="property-group-title">Drawing / QA</div>
+    <div class="property-group-title">Drawing quality / QA</div>
     <div class="property-row"><div class="property-name">Drawing Status</div><div class="property-value">{status}</div></div>
     <div class="property-row"><div class="property-name">Detected Issues</div><div class="property-value">{len(quality_issues)}</div></div>
   </div>
@@ -603,7 +603,7 @@ function esc(v){{
  return String(v ?? "—").replace(/[&<>"']/g,m=>({{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}}[m]));
 }}
 function humanKey(key){{
- return String(key).replace(/_/g," ").replace(/\b\w/g,m=>m.toUpperCase());
+ return String(key).replace(/_/g," ").replace(/\\b\\w/g,m=>m.toUpperCase());
 }}
 function browserEntityRows(predicate){{
  return Object.values(entities)
