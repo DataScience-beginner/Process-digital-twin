@@ -2,14 +2,32 @@
 
 Python-only reference implementation for the Digital BDEP platform.
 
-## MVP 0.1
+## Status
+
+### MVP 0.1 — complete
 - Pydantic canonical plant model
-- Standard vertical-separator factory
-- Standard centrifugal-pump factory
+- Permanent object IDs separate from tags
 - Explicit port-to-port connectivity
-- Validation of unknown equipment, unknown ports and connection direction
-- FastAPI endpoint exposing the plant model as JSON
-- Small clickable HTML/SVG concept viewer
+- FastAPI JSON endpoint
+- Basic browser viewer
+
+### MVP 0.2 — complete
+Standard centrifugal-pump installation represented as a reusable engineering module with:
+- suction isolation valve
+- suction pressure indicator association
+- centrifugal pump
+- discharge branch
+- discharge pressure indicator association
+- check valve
+- discharge isolation valve
+- minimum-flow recycle path
+- flow transmitter
+- flow controller
+- flow control valve
+- process and signal connections
+- module membership metadata
+
+The drawing layout remains a view-layer concern; none of its coordinates are stored in the canonical plant model.
 
 ## Run
 ```bash
@@ -23,5 +41,13 @@ Open:
 - Viewer: http://127.0.0.1:8765/
 - JSON model: http://127.0.0.1:8765/api/plant
 
-## Architecture rule
-The plant model is the engineering master. Drawing coordinates and layout are view data only and must not be added to the canonical equipment/connectivity model.
+## Next milestone — MVP 0.3
+Build the standard vessel configuration:
+- PT / PI
+- LT / LI / LIC
+- LCV outlet control
+- PSV association
+- vent and drain
+- vessel nozzles and control-loop semantics
+
+Then connect the approved vessel module and pump module into one larger plant configuration.
