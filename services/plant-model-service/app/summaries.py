@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .continuation import continuation_section
 from .models import Equipment, Instrument, Valve, ValveType
 from .simulation import publish_demo_simulation
 from .thread_models import ObjectDossier, RecordDomain
@@ -200,6 +201,100 @@ def build_bdep_summaries(
         if record.id == "COST-PACKAGE-TOTAL":
             total = row
 
+    continuation = continuation_section()
+    continuation_objects = {item["id"]: item for item in continuation["objects"]}
+    for item in continuation["objects"]:
+        base = {
+            "object_id": item["id"],
+            "tag": item["tag"],
+            "type": item["object_type"],
+            "service": item["service"],
+            "drawing": continuation["drawing_id"],
+            "source_status": continuation["configuration_status"],
+        }
+        if item["category"] == "equipment":
+            equipment.append(base)
+        elif item["category"] == "valve":
+            valve_row = {**base, "parent_equipment": None}
+            valves.append(valve_row)
+            if item["object_type"] == "control_valve":
+                control_valves.append(valve_row.copy())
+        elif item["category"] == "instrument":
+            instruments.append({**base, "parent_equipment": None})
+
+    for line in continuation["lines"]:
+        line_list.append(
+            {
+                "entity_id": line["id"],
+                "line_number": line["line_number"],
+                "stream_number": None,
+                "type": "continuation_process_line",
+                "service": line["service"],
+                "from": line["from"],
+                "to": line["to"],
+                "through": " → ".join(
+                    continuation_objects.get(item_id, {"tag": item_id})["tag"]
+                    for item_id in line.get("through", [])
+                ),
+                "selected_nps_in": None,
+                "status": continuation["configuration_status"],
+                "drawing": continuation["drawing_id"],
+                "continued_from": line.get("continued_from"),
+            }
+        )
+
+    for signal in continuation["signals"]:
+        control_loops.append(
+            {
+                "record_id": signal["id"],
+                "name": signal["service"],
+                "measurement": continuation_objects.get(signal["from"], {"tag": signal["from"]})["tag"],
+                "controller": (
+                    continuation_objects.get(signal["to"], {"tag": signal["to"]})["tag"]
+                    if "LIC" in signal["to"]
+                    else None
+                ),
+                "final_element": (
+                    continuation_objects.get(signal["to"], {"tag": signal["to"]})["tag"]
+                    if "LCV" in signal["to"]
+                    else None
+                ),
+                "signal_standard": "TBD in detailed instrumentation basis",
+                "fail_position": None,
+                "status": continuation["configuration_status"],
+            }
+        )
+
+    drawing_index = [
+        {
+            "drawing_id": "PID-DEMO-001",
+            "title": "Feed Separator / Pump and Minimum-Flow Recycle",
+            "status": "published_demo",
+            "continuation": "LINE-1103 continues to PID-DEMO-002",
+        },
+        {
+            "drawing_id": continuation["drawing_id"],
+            "title": continuation["title"],
+            "status": continuation["configuration_status"],
+            "continuation": (
+                f'{continuation["incoming_reference"]["line_number"]} from '
+                f'{continuation["incoming_reference"]["from_drawing"]}'
+            ),
+        },
+    ]
+
+    continuation_register = [
+        {
+            "line_entity_id": continuation["incoming_reference"]["line_entity_id"],
+            "line_number": continuation["incoming_reference"]["line_number"],
+            "from_drawing": continuation["incoming_reference"]["from_drawing"],
+            "from_connector": continuation["incoming_reference"]["from_connector"],
+            "to_drawing": continuation["incoming_reference"]["to_drawing"],
+            "to_connector": continuation["incoming_reference"]["to_connector"],
+            "semantic_identity_rule": "Same line entity across drawing representations",
+        }
+    ]
+
     publication = []
     # Publication stages are displayed elsewhere; this register represents
     # discipline record maturity at summary level.
@@ -240,5 +335,7 @@ def build_bdep_summaries(
         "technical_summary": technical,
         "cost_summary": cost,
         "publication_summary": publication,
+        "drawing_index": drawing_index,
+        "continuation_register": continuation_register,
         "project_total": [total] if total else [],
     }
