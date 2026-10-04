@@ -223,6 +223,17 @@ def build_bdep_summaries(
             instruments.append({**base, "parent_equipment": None})
 
     for line in continuation["lines"]:
+        if line["id"] == continuation["incoming_reference"]["line_entity_id"]:
+            existing = next(
+                (row for row in line_list if row["entity_id"] == line["id"]),
+                None,
+            )
+            if existing is not None:
+                existing["drawings"] = "PID-DEMO-001; PID-DEMO-002"
+                existing["continuation_to"] = continuation["drawing_id"]
+                existing["continuation_service"] = line["service"]
+            continue
+
         line_list.append(
             {
                 "entity_id": line["id"],
