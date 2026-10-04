@@ -1155,6 +1155,7 @@ def publish_process(session: Session) -> PublicationResult:
                 "selected_orifice_area_in2": round(psv["selected_area_in2"], 4),
                 "selected_capacity_tph": round(psv["selected_capacity_tph"], 3),
                 "area_utilization_pct": round(psv["area_utilization_pct"], 2),
+                "final_orifice_area": "TBD - qualified relief workflow and relief engineer approval required; demo selection shown separately",
                 "design_status": "DEMO SELECTED - relief engineer approval required",
             },
             unit=None,
@@ -1222,7 +1223,7 @@ def publish_process(session: Session) -> PublicationResult:
                         },
                     ],
                     "preliminary_selected_scenario": psv["scenario"],
-                    "selection_reason": "For this demonstration, blocked vapor outlet is the only scenario with a complete published vapor-flow basis. The calculation selects a demo orifice, but project release remains gated until all credible scenarios are completed and a qualified relief engineer approves the result.",
+                    "selection_reason": "For this demonstration, blocked vapor outlet is the only scenario with a complete published vapor-flow basis. The calculation selects a demo orifice, but this is not declared the final project governing relief case; project release remains gated until all credible scenarios are completed and a qualified relief engineer approves the result.",
                     "case_results": [
                         {
                             "case": "Maximum vapor generation",
@@ -1357,6 +1358,8 @@ def publish_process(session: Session) -> PublicationResult:
                             {"check": "Selected area >= required area", "actual": round(psv["selected_area_in2"], 4), "criterion": f'>= {psv["required_area_in2"]:.4f} in2', "result": "PASS"},
                             {"check": "Selected capacity >= required load", "actual": round(psv["selected_capacity_tph"], 3), "criterion": f'>= {psv["relief_load_tph"]:.3f} t/h', "result": "PASS"},
                             {"check": "All credible relief scenarios finalized", "actual": "No", "criterion": "Required before design issue", "result": "GATED"},
+                            {"check": "Final governing scenario established", "actual": "No", "criterion": "All credible scenarios complete + relief engineer approval", "result": "GATED"},
+                            {"check": "Final orifice sizing permitted", "actual": "No", "criterion": "Qualified company relief workflow approval required", "result": "GATED"},
                         ],
                         assumptions=[
                             "The blocked-vapor-outlet demo load equals the maximum simulated vapor generation/outlet rate on stream 1101.",
