@@ -14,6 +14,7 @@ class SimulationEquipment(BaseModel):
 class SimulationStream(BaseModel):
     id: str
     simulator_stream_id: str
+    stream_number: str
     source_equipment_id: str | None = None
     destination_equipment_id: str | None = None
     phase: str
@@ -56,6 +57,7 @@ class SimulationPublication(BaseModel):
         return [
             {
                 "stream_id": stream.id,
+                "stream_number": stream.stream_number,
                 "source_equipment_id": stream.source_equipment_id,
                 "destination_equipment_id": stream.destination_equipment_id,
             }
@@ -125,6 +127,7 @@ def publish_demo_simulation(design_case_id: str) -> SimulationPublication:
         SimulationStream(
             id="STR-S100",
             simulator_stream_id="S-100",
+            stream_number="1100",
             destination_equipment_id="EQ-V101",
             phase="mixed",
             mass_flow=feed_flow,
@@ -138,6 +141,7 @@ def publish_demo_simulation(design_case_id: str) -> SimulationPublication:
         SimulationStream(
             id="STR-S101",
             simulator_stream_id="S-101",
+            stream_number="1101",
             source_equipment_id="EQ-V101",
             phase="vapor",
             mass_flow=vapor_flow,
@@ -151,6 +155,7 @@ def publish_demo_simulation(design_case_id: str) -> SimulationPublication:
         SimulationStream(
             id="STR-S102",
             simulator_stream_id="S-102",
+            stream_number="1102",
             source_equipment_id="EQ-V101",
             destination_equipment_id="EQ-P101",
             phase="liquid",
@@ -165,6 +170,7 @@ def publish_demo_simulation(design_case_id: str) -> SimulationPublication:
         SimulationStream(
             id="STR-S103",
             simulator_stream_id="S-103",
+            stream_number="1103",
             source_equipment_id="EQ-P101",
             phase="liquid",
             mass_flow=liquid_flow,
