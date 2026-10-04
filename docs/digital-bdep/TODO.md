@@ -95,11 +95,14 @@ For V-101 / P-101 / FCV-101 show tabs:
 Every displayed value must show where it came from. ✅ Implemented for the first V-101 / P-101 / FCV-101 database-backed vertical slice.
 
 ## MVP 0.7 — Process Configuration Matcher
-- [ ] Read canonical PFD topology
-- [ ] Match EXACT / KNOWN VARIANT / UNKNOWN
-- [ ] First approved configuration: VESSEL_TO_PUMP_STANDARD_V1
-- [ ] Match by deterministic topology + applicability rules
-- [ ] AI may assist semantic matching only; it must not invent engineering topology
+- [x] Read canonical PFD topology
+- [x] Match EXACT / KNOWN VARIANT / UNKNOWN
+- [x] First approved configuration: VESSEL_TO_PUMP_STANDARD_V1
+- [x] Match by deterministic topology + applicability rules
+- [x] AI may assist semantic matching only; it must not invent engineering topology
+- [x] Persist approved configuration definitions/version in canonical database
+- [x] Require linked Design Basis facts before declaring EXACT
+- [x] Configuration Match viewer shows PFD input, mapping, applicability and permitted modules
 
 ## MVP 0.8 — Engineering Topology Compiler
 - [ ] Expand PFD topology into P&ID semantic topology
