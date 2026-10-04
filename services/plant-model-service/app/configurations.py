@@ -284,5 +284,5 @@ def demo_integrated_configuration_model() -> PlantModel:
         objects=[vessel, *vessel_module.objects, *pump_module.objects],
         connections=[*vessel_module.connections, *pump_module.connections],
         associations=[*vessel_module.associations, *pump_module.associations],
-        modules=[vessel_module.module, pump_module.module],
+        modules=[pump_module.module, vessel_module.module],
     )
