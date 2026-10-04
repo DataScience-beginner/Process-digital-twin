@@ -68,3 +68,17 @@ Implemented:
 Local verification: 16/16 tests pass.
 
 Next: qualify/refine symbol masters against the company-approved Visio stencil, then move manual view positions/routes into a DrawingView model before automatic layout.
+
+
+## MVP 0.4 — semantic graph + drawing representation
+Completed:
+- explicit ProcessNozzle / InstrumentNozzle / AccessNozzle node types
+- V-101 and P-101 connectivity routed through nozzle nodes rather than equipment geometry
+- semantic graph adjacency API and impact traversal
+- DrawingView / Representation / RouteRepresentation models
+- every drawing shape links to semantic_object_id
+- every graphical route links to semantic_edge_id
+- renderer routes from symbol/nozzle anchors rather than a standalone route list
+- dedicated Python CI workflow for this service
+
+This keeps the digital thread authoritative while allowing the drafter workflow and drawing geometry to evolve independently.
