@@ -401,20 +401,69 @@ def _stream_case_table(stream_id: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) -> dict[str, float]:
+def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) -> dict[str, Any]:
     q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
-    required_d_m = math.sqrt(4.0 * q_m3s / (math.pi * max_velocity_ms))
+    required_area_m2 = q_m3s / max_velocity_ms
+    required_d_m = math.sqrt(4.0 * required_area_m2 / math.pi)
     required_in = required_d_m / 0.0254
-    selected = next((size for size in _STANDARD_NPS_IN if size >= required_in), _STANDARD_NPS_IN[-1])
-    selected_d_m = selected * 0.0254
-    selected_area = math.pi * selected_d_m**2 / 4.0
-    selected_velocity = q_m3s / selected_area
+
+    candidate_checks = []
+    for size in _STANDARD_NPS_IN:
+        diameter_m = size * 0.0254
+        area_m2 = math.pi * diameter_m**2 / 4.0
+        velocity_ms = q_m3s / area_m2
+        candidate_checks.append(
+            {
+                "candidate_nps_in": size,
+                "assumed_diameter_in": size,
+                "area_m2": round(area_m2, 6),
+                "velocity_ms": round(velocity_ms, 3),
+                "velocity_limit_ms": max_velocity_ms,
+                "margin_ms": round(max_velocity_ms - velocity_ms, 3),
+                "result": "PASS" if velocity_ms <= max_velocity_ms else "FAIL",
+            }
+        )
+
+    passing = [
+        row["candidate_nps_in"]
+        for row in candidate_checks
+        if row["result"] == "PASS"
+    ]
+    if not passing:
+        raise PublicationBlocked(
+            f"No standard demo NPS satisfies velocity <= {max_velocity_ms:g} m/s "
+            f"for {flow_tph:g} t/h at {density_kgm3:g} kg/m3."
+        )
+
+    selected = passing[0]
+    selected_row = next(
+        row for row in candidate_checks
+        if row["candidate_nps_in"] == selected
+    )
+    selected_index = _STANDARD_NPS_IN.index(selected)
+    previous_size = (
+        _STANDARD_NPS_IN[selected_index - 1]
+        if selected_index > 0
+        else None
+    )
+    previous_row = (
+        next(
+            row for row in candidate_checks
+            if row["candidate_nps_in"] == previous_size
+        )
+        if previous_size is not None
+        else None
+    )
+
     return {
         "flow_m3s": q_m3s,
+        "required_area_m2": required_area_m2,
         "required_diameter_m": required_d_m,
         "required_diameter_in": required_in,
         "selected_nps_in": selected,
-        "selected_velocity_ms": selected_velocity,
+        "selected_velocity_ms": selected_row["velocity_ms"],
+        "candidate_checks": candidate_checks,
+        "previous_candidate": previous_row,
     }
 
 
@@ -568,17 +617,48 @@ def _calculation_detail(
     governing_reason: str,
     outputs: list[dict[str, Any]],
     method: str,
+    trace: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    detail = {
+        "inputs": inputs,
+        "criteria": criteria,
+        "case_results": case_results,
+        "governing_case": governing_case,
+        "governing_reason": governing_reason,
+        "outputs": outputs,
+        "method": method,
+    }
+    if trace:
+        detail["trace"] = trace
+    return {"calculation_detail": detail}
+
+
+def _trace(
+    *,
+    trace_id: str,
+    calculation_type: str,
+    steps: list[dict[str, Any]],
+    input_sources: list[dict[str, Any]],
+    validation_checks: list[dict[str, Any]],
+    assumptions: list[str],
+    limitations: list[str],
+    downstream_consumers: list[str],
+    selection_checks: list[dict[str, Any]] | None = None,
+    service_version: str = "demo-1.0",
+    qualification: str = "MVP deterministic engineering service",
 ) -> dict[str, Any]:
     return {
-        "calculation_detail": {
-            "inputs": inputs,
-            "criteria": criteria,
-            "case_results": case_results,
-            "governing_case": governing_case,
-            "governing_reason": governing_reason,
-            "outputs": outputs,
-            "method": method,
-        }
+        "trace_id": trace_id,
+        "calculation_type": calculation_type,
+        "service_version": service_version,
+        "qualification": qualification,
+        "input_sources": input_sources,
+        "steps": steps,
+        "selection_checks": selection_checks or [],
+        "validation_checks": validation_checks,
+        "assumptions": assumptions,
+        "limitations": limitations,
+        "downstream_consumers": downstream_consumers,
     }
 
 
