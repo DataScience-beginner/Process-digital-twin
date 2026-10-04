@@ -308,8 +308,8 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <h3 id="objectTag">Digital BDEP Object</h3>
 <div id="objectMeta" class="muted">Click any visible equipment, valve, instrument, boundary or line</div>
 <div class="object-actions">
-<button class="detail-btn" onclick="openDetailModal()">↗ Quick Detail</button>
-<button class="detail-btn" onclick="popOutDetail()">⧉ Calculation Workspace</button>
+<button class="detail-btn" onclick="openDetailModal()">↗ Detailed View</button>
+<button class="detail-btn" onclick="popOutDetail()">⧉ Pop out / Calculation Workspace</button>
 </div>
 </div>
 <div class="view-switch">
