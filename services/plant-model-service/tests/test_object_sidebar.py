@@ -6,6 +6,7 @@ from app.configurations import demo_integrated_configuration_model
 from app.db_schema import create_schema
 from app.drafter import build_drafter_instrumented
 from app.persistence import load_object_dossier, seed_demo_database
+from app.publishing import publish_all
 
 
 def _render_db_view():
@@ -105,3 +106,28 @@ def test_sidebar_supports_tab_and_properties_modes():
         "Operations",
     ]:
         assert category in html
+
+
+
+def test_published_structured_calculation_outputs_are_embedded_and_renderable():
+    model = demo_integrated_configuration_model()
+    plan = build_drafter_instrumented(model)
+    cleanup = build_cleanup(plan)
+    engine = create_schema("sqlite+pysqlite:///:memory:")
+    seed_demo_database(engine)
+
+    with Session(engine) as session:
+        publish_all(session)
+
+    with Session(engine) as session:
+        dossiers = {
+            object_id: load_object_dossier(session, object_id)
+            for object_id in ["EQ-V101", "EQ-P101", "VLV-FCV101"]
+        }
+
+    html = render_clean_pid_html(model, plan, cleanup, dossiers)
+    assert "required_holdup_volume_m3" in html
+    assert "rated_head_m" in html
+    assert "design_cv" in html
+    assert 'typeof value==="object"' in html
+    assert "structured-value" in html
