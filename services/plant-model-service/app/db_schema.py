@@ -125,6 +125,18 @@ class StreamComponentRow(Base):
     mass_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
+
+class ProcessConfigurationRow(Base):
+    __tablename__ = "process_configurations"
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    name: Mapped[str] = mapped_column(String(250))
+    version: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    definition_json: Mapped[dict] = mapped_column(JSON)
+    approved_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class EngineeringRecordRow(Base):
     __tablename__ = "engineering_records"
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
