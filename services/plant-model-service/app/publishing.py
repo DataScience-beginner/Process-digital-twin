@@ -1055,6 +1055,43 @@ def publish_mechanical(session: Session) -> PublicationResult:
             source_id="MECH-DATASHEET-V101",
             method="published process duty + Design Basis mechanical criteria",
             object_ids=["EQ-V101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Process holdup volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+                    {"name": "Maximum published temperature", "value": round(max_temp, 3), "unit": "degC"},
+                    {"name": "PSV preliminary set pressure", "value": psv_set, "unit": "barg"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-VESSEL-DT-MARGIN", "name": "Design temperature margin", "value": design_temp_margin, "unit": "degC"},
+                    {"criterion_id": "DBC-VESSEL-MOC", "name": "Material of construction", "value": vessel_moc},
+                    {"criterion_id": "DBC-VESSEL-CA", "name": "Corrosion allowance", "value": corrosion_allowance, "unit": "mm"},
+                    {"criterion_id": "DBC-VESSEL-CODE", "name": "Design code", "value": vessel_code},
+                ],
+                case_results=[
+                    {
+                        "case": label,
+                        "simulation_case_id": pub.simulation_case_id,
+                        "maximum_stream_temperature_degC": max(stream.temperature for stream in pub.streams),
+                        "design_temperature_degC": round(max(stream.temperature for stream in pub.streams) + design_temp_margin, 3),
+                    }
+                    for design_case_id, label in [
+                        ("CASE-NORMAL", "Normal"),
+                        ("CASE-MAX", "Maximum"),
+                        ("CASE-TURNDOWN", "Turndown"),
+                    ]
+                    for pub in [publish_demo_simulation(design_case_id)]
+                ],
+                governing_case="Maximum",
+                governing_reason="Maximum case gives the highest published process temperature in the current case set.",
+                outputs=[
+                    {"name": "Design pressure", "value": psv_set, "unit": "barg"},
+                    {"name": "Design temperature", "value": round(max_temp + design_temp_margin, 3), "unit": "degC"},
+                    {"name": "Material", "value": vessel_moc},
+                    {"name": "Corrosion allowance", "value": corrosion_allowance, "unit": "mm"},
+                    {"name": "Final thickness / nozzle schedule", "value": "TBD by qualified mechanical design service"},
+                ],
+                method="Technical/mechanical basis publisher from process duty and approved Design Basis criteria.",
+            ),
         )
     )
     record_ids.append(
@@ -1076,6 +1113,43 @@ def publish_mechanical(session: Session) -> PublicationResult:
             source_id="MECH-DATASHEET-P101",
             method="published process duty to mechanical package basis",
             object_ids=["EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Rated head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                    {"name": "Shaft power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-MOTOR-MARGIN", "name": "Motor sizing margin", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                    {"name": "Driver type", "value": "Electric motor"},
+                ],
+                case_results=[
+                    {
+                        "case": label,
+                        "simulation_case_id": pub.simulation_case_id,
+                        "flow_tph": round(suc.mass_flow, 3),
+                        "differential_pressure_bar": round(dis.pressure - suc.pressure, 3),
+                    }
+                    for design_case_id, label in [
+                        ("CASE-NORMAL", "Normal"),
+                        ("CASE-MAX", "Maximum"),
+                        ("CASE-TURNDOWN", "Turndown"),
+                    ]
+                    for pub in [publish_demo_simulation(design_case_id)]
+                    for suc in [next(item for item in pub.streams if item.id == "STR-S102")]
+                    for dis in [next(item for item in pub.streams if item.id == "STR-S103")]
+                ],
+                governing_case="Maximum",
+                governing_reason="Mechanical package basis follows the published rated duty derived from the maximum process case.",
+                outputs=[
+                    {"name": "Rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Rated head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                    {"name": "Preliminary shaft power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                    {"name": "Preliminary motor", "value": round(n["motor_preliminary_kw"], 3), "unit": "kW"},
+                    {"name": "Vendor curve / final selection", "value": "TBD during vendor stage"},
+                ],
+                method="Technical/mechanical package basis publisher from process duty.",
+            ),
         )
     )
 
