@@ -201,6 +201,16 @@ Goal: every selected engineering item can open a detailed calculation/datasheet 
 - [x] Outstanding / TBD / gated items
 - [x] Links from dashboard to Engineering View and object detail pages
 
+## MVP 0.9E — Relationship-Aware Entity Inspector
+- [x] Every visible P&ID object is selectable: equipment, PSV, CV, manual valves, NRV, instruments, junctions and boundaries
+- [x] Visible process / utility / instrument / signal routes are selectable entities
+- [x] Equipment selection shows only actually connected nodes and lines
+- [x] Line selection reverses context to FROM / THROUGH / TO
+- [x] Line path shows connected equipment, nozzles, valves, instruments and boundaries
+- [x] Child objects retain semantic identity but dashboard reporting rolls them into primary equipment
+- [x] Line-sizing calculations are opened from the selected line instead of being dumped into every connected equipment calculation tab
+- [x] Generic entity detail route supports line / connection pop-outs
+
 ## MVP 1.0 — Vendor / EPC Information Thread
 - [ ] Vendor enquiry package inputs
 - [ ] Vendor document register
