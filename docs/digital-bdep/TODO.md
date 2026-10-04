@@ -211,6 +211,94 @@ Goal: every selected engineering item can open a detailed calculation/datasheet 
 - [x] Line-sizing calculations are opened from the selected line instead of being dumped into every connected equipment calculation tab
 - [x] Generic entity detail route supports line / connection pop-outs
 
+## MVP 0.10 — Engineering Calculation & Datasheet Workspace
+Goal: make the Digital BDEP calculation viewer feel like an in-house engineering calculation tool, not a summary card.
+
+- [ ] Full workspace header: object/tag, service, revision, maturity, governing basis and connected entities
+- [ ] Discipline tabs inside one datasheet/calculation workspace:
+  - [ ] Process / Safety
+  - [ ] Instrumentation / DCS
+  - [ ] Technical / Mechanical
+  - [ ] Electrical
+  - [ ] Cost Estimate
+  - [ ] Vendor / EPC
+  - [ ] Operations
+  - [ ] HAZOP
+  - [ ] Provenance / Audit
+- [ ] Every calculation renders:
+  - [ ] input register with source and revision
+  - [ ] criteria / limits
+  - [ ] equations
+  - [ ] numerical substitution
+  - [ ] intermediate results
+  - [ ] Normal / Maximum / Turndown case matrix
+  - [ ] standard-size / candidate selection table
+  - [ ] validation checks
+  - [ ] governing case + reason
+  - [ ] final selected result
+  - [ ] assumptions
+  - [ ] limitations / engineering gates
+  - [ ] downstream consumers
+- [ ] PSV-101 complete demo relief trace
+  - [ ] scenario register
+  - [ ] blocked-vapor-outlet deterministic load
+  - [ ] relieving pressure
+  - [ ] choked-flow check
+  - [ ] vapor mass-flux calculation
+  - [ ] required effective area
+  - [ ] standard-orifice candidate table
+  - [ ] selected demo orifice
+  - [ ] selected-area capacity check
+  - [ ] explicit safety approval gate for final issue
+- [ ] Line sizing full candidate trace
+- [ ] Pump full duty trace
+- [ ] Vessel full holdup trace
+- [ ] FCV full Cv trace
+- [ ] Datasheet-style printable layout
+
+## MVP 0.11 — HAZOP Digital-Thread Demonstrator
+- [ ] Build HAZOP nodes directly from process sections / connected graph
+- [ ] Pre-populate design intent, operating envelope and connected equipment/lines
+- [ ] Guideword/deviation rows
+- [ ] Candidate causes linked to actual valves/equipment/lines
+- [ ] Existing safeguards linked to actual instruments/PSVs/interlocks
+- [ ] Consequences and action/recommendation fields
+- [ ] Jump from HAZOP row to engineering entity/calculation
+- [ ] Show how a design change can identify affected HAZOP rows
+- [ ] Explicit rule: HAZOP assistant supports the workshop; it does not replace the multidisciplinary HAZOP team
+
+## MVP 0.12 — Engineering Export Layer
+- [ ] PDF calculation/datasheet export
+- [ ] SVG engineering drawing export
+- [ ] DEXPI 2.x XML exporter with schema-validation gate
+- [ ] Visio adapter / VDX or VSDX mapping
+- [ ] CAD DXF exporter
+- [ ] DWG converter adapter via approved Autodesk/ODA service; do not fake binary DWG
+- [ ] Export manifest with model revision, drawing revision, provenance and generation timestamp
+
+## MVP 0.13 — Multi-Sheet / Continuation P&ID
+- [ ] Add second approved demo process section
+- [ ] Off-page connector from PID-DEMO-001 to PID-DEMO-002
+- [ ] Same line/object IDs continue across sheets
+- [ ] Cross-sheet references generated automatically
+- [ ] Selecting continuation line shows both sheet representations
+- [ ] Preserve one semantic object across multiple drawing representations
+
+## MVP 0.14 — Generated BDEP Summaries
+- [ ] Equipment list
+- [ ] Stream list
+- [ ] Line list
+- [ ] Valve list
+- [ ] Control-valve list
+- [ ] Instrument index
+- [ ] Control-loop list
+- [ ] PSV / relief summary
+- [ ] Calculation register
+- [ ] Mechanical / technical summary
+- [ ] Cost summary
+- [ ] Publication / completion summary
+- [ ] Export summaries to HTML / CSV / PDF
+
 ## MVP 1.0 — Vendor / EPC Information Thread
 - [ ] Vendor enquiry package inputs
 - [ ] Vendor document register
