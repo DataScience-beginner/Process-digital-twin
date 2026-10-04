@@ -165,6 +165,7 @@ def seed_demo_database(engine) -> dict[str, int]:
                     id=stream.id,
                     project_id=PROJECT_ID,
                     simulation_stream_id=stream.simulator_stream_id,
+                    stream_number=stream.stream_number,
                     source_equipment_id=stream.source_equipment_id,
                     destination_equipment_id=stream.destination_equipment_id,
                 )
