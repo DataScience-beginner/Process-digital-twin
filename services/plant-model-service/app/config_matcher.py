@@ -132,40 +132,30 @@ def _edge_matches(
 
 
 def _check_applicability(
-    publication: SimulationPublication,
     definition: ConfigurationDefinition,
+    design_basis_facts: dict[str, str | float | int | bool] | None,
 ) -> list[ApplicabilityCheck]:
+    facts = design_basis_facts or {}
     checks: list[ApplicabilityCheck] = []
 
     for rule, expected in definition.applicability_rules.items():
-        if rule == "pump_minimum_flow_required":
-            # This is a Design Basis/configuration policy flag. For MVP 0.7 the
-            # simulation publication does not own it, so matching records that
-            # the rule is required and must be satisfied by the Design Basis
-            # before topology compilation.
-            checks.append(
-                ApplicabilityCheck(
-                    rule=rule,
-                    passed=True,
-                    actual=True,
-                    expected=expected,
-                )
+        actual = facts.get(rule)
+        checks.append(
+            ApplicabilityCheck(
+                rule=rule,
+                passed=actual == expected,
+                actual=actual,
+                expected=expected,
             )
-        else:
-            checks.append(
-                ApplicabilityCheck(
-                    rule=rule,
-                    passed=False,
-                    actual=None,
-                    expected=expected,
-                )
-            )
+        )
 
     return checks
 
 
 def match_configuration(
     publication: SimulationPublication,
+    *,
+    design_basis_facts: dict[str, str | float | int | bool] | None = None,
     definitions: list[ConfigurationDefinition] | None = None,
 ) -> ConfigurationMatch:
     definitions = definitions or APPROVED_CONFIGURATIONS
@@ -198,7 +188,7 @@ def match_configuration(
         if not all_edges_exist:
             continue
 
-        applicability = _check_applicability(publication, definition)
+        applicability = _check_applicability(definition, design_basis_facts)
         applicability_ok = all(check.passed for check in applicability)
 
         if all_phases_match and applicability_ok:
