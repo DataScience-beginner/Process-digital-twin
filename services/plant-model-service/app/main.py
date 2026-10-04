@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from .clean_renderer import render_clean_pid_html
+from .config_matcher import match_configuration
 from .cleanup import build_cleanup
 from .configurations import demo_integrated_configuration_model
 from .drafter import build_drafter_instrumented, build_drafter_skeleton
@@ -12,11 +13,16 @@ from .db_schema import engine_from_url
 from .graph_renderer import render_graph_html
 from .instrumented_renderer import render_instrumented_pid_html
 from .skeleton_renderer import render_drafter_skeleton_html
-from .persistence import database_summary, ensure_demo_seeded, load_object_dossier
+from .persistence import (
+    database_summary,
+    ensure_demo_seeded,
+    load_configuration_match_facts,
+    load_object_dossier,
+)
 from .thread_service import DESIGN_CASES, build_object_dossier
 from .simulation import publish_demo_simulation
 
-app = FastAPI(title="Digital BDEP Prototype", version="0.6.1")
+app = FastAPI(title="Digital BDEP Prototype", version="0.7.0")
 
 
 @app.get("/api/plant")
@@ -81,6 +87,18 @@ def pfd_graph(design_case_id: str):
         "nodes": [item.model_dump(mode="json") for item in publication.equipment],
         "edges": publication.pfd_edges(),
     }
+
+
+@app.get("/api/configuration-match/{design_case_id}")
+def configuration_match(design_case_id: str):
+    publication = publish_demo_simulation(design_case_id)
+    engine = _app_engine()
+    with Session(engine) as session:
+        facts = load_configuration_match_facts(session)
+    return match_configuration(
+        publication,
+        design_basis_facts=facts,
+    ).model_dump(mode="json")
 
 
 @app.get("/api/object/{object_id}/dossier")
