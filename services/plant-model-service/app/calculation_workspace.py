@@ -379,10 +379,13 @@ ul{{font-size:9px;line-height:1.5;margin:0;padding-left:18px}}
 <div class="sub">{html.escape(type_text)} · {html.escape(service)}</div>
 <div class="sub">Entity ID: {html.escape(entity_id)} · Governing Design Basis: DB-001 Rev A</div>
 <div class="toolbar">
+<a href="/export/workspace/{html.escape(entity_id)}.pdf">PDF</a>
 <a href="/export/dexpi.xml">DEXPI XML</a>
-<a href="/export/summary.csv">Summary CSV</a>
-<button onclick="window.print()">Print / Save PDF</button>
-<a href="/engineering">Back to P&ID</a>
+<a href="/export/visio.vdx">Visio VDX</a>
+<a href="/export/drawing.dxf">CAD DXF</a>
+<button onclick="window.print()">Print</button>
+<a href="/engineering">PID-001</a>
+<a href="/engineering-2">PID-002</a>
 </div>
 </div>
 <span class="badge">Published data + explicit engineering gates</span>
