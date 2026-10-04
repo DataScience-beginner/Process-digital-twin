@@ -1826,7 +1826,7 @@ def publish_process(session: Session) -> PublicationResult:
                         ],
                         qualification="Detailed deterministic demo hydraulic screening; final project hydraulic issue remains gated",
                     ),
-                )                ),
+                ),
             )
         )
 
