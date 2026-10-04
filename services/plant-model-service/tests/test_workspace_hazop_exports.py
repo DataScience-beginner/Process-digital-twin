@@ -7,6 +7,7 @@ from app.continuation import continuation_section
 from app.continuation_renderer import render_continuation_pid_html
 from app.db_schema import create_schema
 from app.drafter import build_drafter_instrumented
+from app.dwg_adapter import DwgConverterUnavailable, convert_dxf_to_dwg, dwg_converter_status
 from app.exporters import (
     export_dexpi_oriented_xml,
     export_dxf_demo,
@@ -246,3 +247,19 @@ def test_mechanical_and_cost_tabs_also_have_step_by_step_trace():
         assert trace["validation_checks"]
         assert trace["limitations"]
         assert trace["downstream_consumers"]
+
+
+
+def test_dwg_export_is_real_adapter_not_fake_binary(monkeypatch):
+    monkeypatch.delenv("DWG_CONVERTER_CMD", raising=False)
+    status = dwg_converter_status()
+    assert status["configured"] is False
+    assert status["input_format"] == "DXF"
+    assert status["output_format"] == "DWG"
+
+    try:
+        convert_dxf_to_dwg(b"0\nEOF\n")
+    except DwgConverterUnavailable as exc:
+        assert "not configured" in str(exc).lower()
+    else:
+        raise AssertionError("DWG adapter must not fabricate a DWG when converter is unavailable")
