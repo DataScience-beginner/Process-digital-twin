@@ -6,6 +6,22 @@ from typing import Any
 from .thread_models import ObjectDossier
 
 
+PRIMARY_EQUIPMENT = {
+    "EQ-V101": [
+        "VLV-PSV101",
+        "VLV-LCV101",
+        "INS-PT101",
+        "INS-LT101",
+        "INS-LIC101",
+    ],
+    "EQ-P101": [
+        "VLV-FCV101",
+        "INS-FT101",
+        "INS-FIC101",
+    ],
+}
+
+
 def _contains_tbd(value: Any) -> bool:
     if value is None:
         return False
@@ -23,7 +39,23 @@ def _records(dossier: ObjectDossier, domain: str):
     return []
 
 
-def _cost(dossier: ObjectDossier) -> tuple[float | None, str | None]:
+def _bundle(
+    dossiers: dict[str, ObjectDossier],
+    parent_id: str,
+) -> list[ObjectDossier]:
+    ids = [parent_id, *PRIMARY_EQUIPMENT.get(parent_id, [])]
+    return [dossiers[item_id] for item_id in ids if item_id in dossiers]
+
+
+def _bundle_records(bundle: list[ObjectDossier], domain: str):
+    return [
+        record
+        for dossier in bundle
+        for record in _records(dossier, domain)
+    ]
+
+
+def _direct_cost(dossier: ObjectDossier) -> tuple[float | None, str | None]:
     candidates = [
         record
         for record in _records(dossier, "cost")
@@ -59,66 +91,63 @@ def render_dashboard_html(
             """
         )
 
-    object_rows = []
-    total_cost = 0.0
-    total_currency = "USD"
+    equipment_rows = []
     outstanding_count = 0
+    total_currency = "USD"
 
-    ordering = [
-        "EQ-V101",
-        "EQ-P101",
-        "VLV-PSV101",
-        "VLV-LCV101",
-        "VLV-FCV101",
-        "INS-PT101",
-        "INS-LT101",
-        "INS-LIC101",
-        "INS-FT101",
-        "INS-FIC101",
-    ]
-
-    for object_id in ordering:
-        dossier = dossiers.get(object_id)
+    for parent_id, child_ids in PRIMARY_EQUIPMENT.items():
+        dossier = dossiers.get(parent_id)
         if dossier is None:
             continue
 
-        process_records = _records(dossier, "process_calculation")
-        inst_records = _records(dossier, "instrumentation")
-        mech_records = _records(dossier, "mechanical")
-        cost_records = _records(dossier, "cost")
-        epc_records = _records(dossier, "epc_vendor")
-        cost_value, currency = _cost(dossier)
-        if cost_value is not None:
-            total_cost += cost_value
-            total_currency = currency or total_currency
+        bundle = _bundle(dossiers, parent_id)
+        process_records = _bundle_records(bundle, "process_calculation")
+        inst_records = _bundle_records(bundle, "instrumentation")
+        mech_records = _bundle_records(bundle, "mechanical")
+        cost_records = _bundle_records(bundle, "cost")
+        epc_records = _bundle_records(bundle, "epc_vendor")
+
+        direct_cost, currency = _direct_cost(dossier)
+        if currency:
+            total_currency = currency
 
         tbd = sum(
             1
-            for records in dossier.records.values()
+            for member in bundle
+            for records in member.records.values()
             for record in records
             if _contains_tbd(record.value)
             or "placeholder" in record.status.lower()
         )
         outstanding_count += tbd
 
-        cost_text = (
-            f"{html.escape(currency or '')} {cost_value:,.2f}"
-            if cost_value is not None
+        child_tags = [
+            dossiers[child_id].tag
+            for child_id in child_ids
+            if child_id in dossiers
+        ]
+        direct_cost_text = (
+            f"{html.escape(currency or '')} {direct_cost:,.2f}"
+            if direct_cost is not None
             else "—"
         )
 
-        object_rows.append(
+        equipment_rows.append(
             f"""
             <tr>
-              <td><a href="/object/{html.escape(dossier.object_id)}/detail"><b>{html.escape(dossier.tag)}</b></a><div class="small">{html.escape(dossier.service or "")}</div></td>
+              <td>
+                <a href="/object/{html.escape(dossier.object_id)}/detail"><b>{html.escape(dossier.tag)}</b></a>
+                <div class="small">{html.escape(dossier.service or "")}</div>
+              </td>
               <td>{html.escape(dossier.object_type or dossier.category)}</td>
+              <td><div class="child-list">{html.escape(" · ".join(child_tags) or "—")}</div></td>
               <td>{_status_cell(bool(dossier.design_basis))}</td>
               <td>{_status_cell(bool(process_records))}</td>
               <td>{_status_cell(bool(inst_records))}</td>
               <td>{_status_cell(bool(mech_records))}</td>
               <td>{_status_cell(bool(cost_records))}</td>
               <td>{_status_cell(bool(epc_records), "Started")}</td>
-              <td>{cost_text}</td>
+              <td>{direct_cost_text}</td>
               <td>{tbd}</td>
             </tr>
             """
@@ -133,11 +162,16 @@ def render_dashboard_html(
         if package_total:
             break
 
+    project_total = package_total.get("total") if package_total else 0.0
     if package_total:
-        project_total = package_total.get("total")
         total_currency = package_total.get("currency") or total_currency
-    else:
-        project_total = total_cost
+
+    published_count = sum(
+        1
+        for stage in stages
+        if (stage.status if hasattr(stage, "status") else stage.get("status"))
+        == "published"
+    )
 
     return f"""<!doctype html>
 <html>
@@ -160,19 +194,19 @@ main{{padding:14px;max-width:1500px;margin:auto}}
 h2{{font-size:14px;margin:0 0 9px}} table{{border-collapse:collapse;width:100%;font-size:10px}}
 th,td{{border:1px solid #ddd;padding:6px;text-align:left;vertical-align:top}} th{{background:#f1f5f9}}
 a{{color:#174a77;text-decoration:none}} .small{{font-size:9px;color:#64748b;margin-top:2px}}
-.note{{font-size:9px;color:#64748b;margin-top:7px}}
+.note{{font-size:9px;color:#64748b;margin-top:7px}} .child-list{{font-size:9px;color:#475569;line-height:1.4}}
 @media(max-width:900px){{.cards,.stage-grid{{grid-template-columns:1fr 1fr}}}}
 </style>
 </head>
 <body>
 <header>
-<div><strong>Digital BDEP — Project / Section Dashboard</strong><div class="small">Object completion, discipline maturity and demo cost summary</div></div>
+<div><strong>Digital BDEP — Project / Section Dashboard</strong><div class="small">Primary equipment completion with child discipline objects rolled up underneath</div></div>
 <nav><a href="/engineering">Engineering View</a><a href="/configuration-match/CASE-NORMAL">Configuration</a></nav>
 </header>
 <main>
 <div class="cards">
-<div class="card"><div class="label">Published stages</div><div class="big">{sum(1 for s in stages if (s.status if hasattr(s, "status") else s.get("status")) == "published")} / {len(stages)}</div></div>
-<div class="card"><div class="label">Tracked objects</div><div class="big">{len(object_rows)}</div></div>
+<div class="card"><div class="label">Published stages</div><div class="big">{published_count} / {len(stages)}</div></div>
+<div class="card"><div class="label">Primary equipment</div><div class="big">{len(equipment_rows)}</div><div class="note">Small valves/instruments are child objects, not separate major equipment rows.</div></div>
 <div class="card"><div class="label">Demo project/section estimate</div><div class="big">{html.escape(str(total_currency))} {float(project_total or 0):,.0f}</div><div class="note">Non-commercial demo cost model</div></div>
 <div class="card"><div class="label">Outstanding / TBD records</div><div class="big">{outstanding_count}</div></div>
 </div>
@@ -183,14 +217,14 @@ a{{color:#174a77;text-decoration:none}} .small{{font-size:9px;color:#64748b;marg
 </section>
 
 <section class="panel">
-<h2>Object Completion Matrix</h2>
+<h2>Primary Equipment Completion Matrix</h2>
 <div style="overflow:auto"><table>
 <thead><tr>
-<th>Object</th><th>Type</th><th>Design Basis</th><th>Process / Safety</th><th>Instrumentation / DCS</th><th>Mechanical</th><th>Cost</th><th>EPC / Vendor</th><th>Cost</th><th>TBD</th>
+<th>Equipment</th><th>Type</th><th>Associated P&ID / Discipline Objects</th><th>Design Basis</th><th>Process / Safety</th><th>Instrumentation / DCS</th><th>Technical / Mechanical</th><th>Cost Estimate</th><th>EPC / Vendor</th><th>Direct Equipment Cost</th><th>TBD / Gated</th>
 </tr></thead>
-<tbody>{"".join(object_rows)}</tbody>
+<tbody>{"".join(equipment_rows)}</tbody>
 </table></div>
-<div class="note">Completion here means linked published records exist for the object; later governance will add formal discipline approval states.</div>
+<div class="note">PSV, control valves and instrument bubbles remain individually traceable in the Digital Thread, but dashboard completion rolls them into their parent equipment/system instead of treating them as separate major equipment.</div>
 </section>
 </main>
 </body></html>"""
