@@ -263,3 +263,29 @@ def test_dwg_export_is_real_adapter_not_fake_binary(monkeypatch):
         assert "not configured" in str(exc).lower()
     else:
         raise AssertionError("DWG adapter must not fabricate a DWG when converter is unavailable")
+
+
+
+def test_line_sizing_is_full_hydraulic_trace_not_velocity_only():
+    model, plan, engine, dossiers, inspection = _context()
+    line = _record(dossiers["EQ-P101"], "LINE-1102-SIZING")
+
+    assert line.value["selected_nps_in"] == 8.0
+    assert line.value["selected_internal_diameter_in"] > 7.9
+    assert line.value["design_reynolds"] > 100000
+    assert 0 < line.value["design_friction_factor"] < 0.1
+    assert line.value["design_friction_dp_bar"] < line.value["friction_dp_limit_bar"]
+
+    detail = line.metadata["calculation_detail"]
+    trace = detail["trace"]
+    assert len(trace["steps"]) >= 11
+    titles = {step["title"] for step in trace["steps"]}
+    assert "Calculate Reynolds number" in titles
+    assert "Calculate Darcy friction factor" in titles
+    assert "Calculate frictional pressure drop" in titles
+    assert any(
+        row["pressure_drop_check"] == "PASS"
+        for row in trace["selection_checks"]
+        if row["candidate_nps_in"] == 8.0
+    )
+    assert {"reynolds", "friction_factor", "friction_dp_bar"} <= set(detail["case_results"][0])
