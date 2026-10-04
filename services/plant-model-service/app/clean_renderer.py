@@ -605,6 +605,107 @@ function esc(v){{
 function humanKey(key){{
  return String(key).replace(/_/g," ").replace(/\b\w/g,m=>m.toUpperCase());
 }}
+function browserEntityRows(predicate){{
+ return Object.values(entities)
+   .filter(predicate)
+   .sort((a,b)=>String(a.tag||a.id).localeCompare(String(b.tag||b.id)))
+   .map(e=>({{id:e.id,label:e.tag||e.id,meta:e.service||"",type:e.object_type||e.category,target_id:e.id}}));
+}}
+function modelBrowserGroups(){{
+ const streams=[];
+ const seenStreams=new Set();
+ Object.values(entities)
+   .filter(e=>e.category==="line"&&e.stream_number)
+   .sort((a,b)=>String(a.stream_number).localeCompare(String(b.stream_number)))
+   .forEach(e=>{{
+     const key=String(e.stream_number);
+     if(seenStreams.has(key))return;
+     seenStreams.add(key);
+     streams.push({{
+       id:"STREAM-"+key,
+       label:key,
+       meta:e.service||e.line_number||"",
+       type:"stream",
+       target_id:e.id
+     }});
+   }});
+ const drawings=[
+   {{id:"DRAWING-PID-001",label:"PID-DEMO-001",meta:"Separator + pump configuration",type:"drawing",canvas:"pid1"}},
+   {{id:"DRAWING-PID-002",label:"PID-DEMO-002",meta:"Continuation section",type:"drawing",canvas:"pid2"}},
+   {{id:"DRAWING-PLANT-MODEL",label:"Plant Model",meta:"Digital-thread graph",type:"model",canvas:"plant"}}
+ ];
+ return [
+   {{id:"equipment",label:"Equipment",items:browserEntityRows(e=>e.category==="equipment")}},
+   {{id:"instruments",label:"Instruments",items:browserEntityRows(e=>e.category==="instrument")}},
+   {{id:"streams",label:"Streams",items:streams}},
+   {{id:"piping",label:"Piping / Lines",items:browserEntityRows(e=>e.category==="line")}},
+   {{id:"valves",label:"Valves",items:browserEntityRows(e=>e.category==="valve")}},
+   {{id:"control_loops",label:"Control Loops / Signals",items:browserEntityRows(e=>e.category==="connection"&&e.object_type==="signal_connection")}},
+   {{id:"connections",label:"Instrument Connections",items:browserEntityRows(e=>e.category==="connection"&&e.object_type==="instrument_connection")}},
+   {{id:"boundaries",label:"Boundaries / Off-page",items:browserEntityRows(e=>e.category==="boundary")}},
+   {{id:"drawings",label:"Drawings / Views",items:drawings}}
+ ];
+}}
+function renderModelBrowser(){{
+ const host=document.getElementById("modelBrowser");
+ if(!host)return;
+ const q=(document.getElementById("modelSearch")?.value||"").trim().toLowerCase();
+ const groups=modelBrowserGroups();
+ host.innerHTML=groups.map((group,index)=>{{
+   const items=group.items.filter(item=>{{
+     if(!q)return true;
+     return [item.label,item.meta,item.type,item.id].join(" ").toLowerCase().includes(q);
+   }});
+   if(q&&items.length===0)return "";
+   const open=(q||index===0)?" open":"";
+   const rows=items.map(item=>{{
+     const active=(item.target_id===selectedId)?" active":"";
+     const action=item.canvas
+       ? "switchCanvas('"+item.canvas+"')"
+       : "selectFromBrowser('"+item.target_id+"')";
+     return '<button class="browser-child'+active+'" data-browser-target="'+esc(item.target_id||item.id)+'" onclick="'+action+'">'
+       +'<span><div class="browser-label">'+esc(item.label)+'</div><div class="browser-meta">'+esc(item.meta||"")+'</div></span>'
+       +'<span class="browser-type">'+esc(humanKey(item.type||""))+'</span></button>';
+   }}).join("");
+   return '<details class="model-category" data-browser-category="'+esc(group.id)+'"'+open+'>'
+     +'<summary>'+esc(group.label)+'<span class="model-count">'+items.length+'</span></summary>'
+     +'<div class="browser-list">'+(rows||'<div class="empty">No matching items.</div>')+'</div></details>';
+ }}).join("");
+}}
+function selectFromBrowser(id){{
+ if(!entityFor(id))return;
+ if(activeCanvas!=="pid1")switchCanvas("pid1");
+ selectEntity(id);
+ setInspectorMode("properties");
+ focusCanvasEntity(id);
+ renderModelBrowser();
+}}
+function resetDrawingView(){{
+ const svg=document.getElementById("pidCanvas");
+ if(!svg)return;
+ svg.setAttribute("viewBox","0 0 1120 690");
+ document.getElementById("canvasFocusText").textContent="Whole drawing";
+}}
+function focusCanvasEntity(id){{
+ const svg=document.getElementById("pidCanvas");
+ const el=entityElement(id);
+ const e=entityFor(id);
+ if(!svg||!el||typeof el.getBBox!=="function"){{
+   document.getElementById("canvasFocusText").textContent=(e?.tag||id)+" · no visible representation";
+   return;
+ }}
+ const b=el.getBBox();
+ const aspect=1120/690;
+ const isRoute=e&&(e.category==="line"||e.category==="connection");
+ let width=isRoute?Math.max(520,Math.min(930,b.width+240)):Math.max(300,Math.min(620,b.width*5+160));
+ let height=width/aspect;
+ if(height<b.height+150){{height=Math.min(620,b.height+150);width=height*aspect;}}
+ let cx=b.x+b.width/2,cy=b.y+b.height/2;
+ let x=Math.max(0,Math.min(1120-width,cx-width/2));
+ let y=Math.max(0,Math.min(690-height,cy-height/2));
+ svg.setAttribute("viewBox",[x,y,width,height].map(v=>Number(v.toFixed(1))).join(" "));
+ document.getElementById("canvasFocusText").textContent="Focused: "+(e?.tag||id);
+}}
 function formatValue(value,unit){{
  if(value===null||value===undefined)return "—";
  if(Array.isArray(value)){{
@@ -1015,6 +1116,7 @@ function createDraftObject(type,x,y){{
  draftActions.push({{action:"add_object",id}});
  entities[id]={{id,tag,category:obj.category,object_type:obj.object_type,service:obj.service,properties:{{draft:true}},children:[],relationships:[],connected_lines:[],status:"DRAFT"}};
  selectEntity(id);
+ renderModelBrowser();
  setToolStatus(tag+" added as a provisional draft object. Drag to reposition or connect it.");
 }}
 function draftMoveStart(ev,id){{if(ev.button!==0)return;movingDraft=id;ev.stopPropagation();}}
@@ -1028,6 +1130,7 @@ function draftMove(ev){{
  obj.y=snap(Math.max(55,Math.min(560,p.y)));
  document.getElementById("svg-"+obj.id).setAttribute("transform","translate("+obj.x+" "+obj.y+")");
  redrawDraftConnections();
+ renderModelBrowser();
 }}
 function draftMoveEnd(){{movingDraft=null;}}
 function entityElement(id){{
@@ -1165,6 +1268,7 @@ function clearDrafts(){{
  document.getElementById("draftLayer").innerHTML="";
  document.getElementById("draftConnectorLayer").innerHTML="";
  if(entities["EQ-V101"])selectEntity("EQ-V101");
+ renderModelBrowser();
  setToolStatus("All provisional sketch objects and connectors cleared. Published engineering model unchanged.");
 }}
 function prepareChangeSet(){{
@@ -1184,11 +1288,12 @@ function prepareChangeSet(){{
 function selectEntity(id){{
  if(!entityFor(id))return;
  const usedByConnector=guidedSelect(id);
- selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);
+ selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);renderModelBrowser();
  if(usedByConnector)return;
 }}
 function selectObject(id){{selectEntity(id);}}
 renderPublishBar();
+renderModelBrowser();
 if(entities["EQ-V101"])selectEntity("EQ-V101");
 </script>
 </body></html>"""
