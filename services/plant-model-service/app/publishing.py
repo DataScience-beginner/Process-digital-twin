@@ -1187,25 +1187,80 @@ def publish_costing(session: Session) -> PublicationResult:
     instrumentation_package = 22000.0
     total = vessel_cost + pump_cost + valve_cost + instrumentation_package
 
+    cost_specs = [
+        {
+            "record_id": "COST-V101",
+            "name": "V-101 demo parametric class estimate",
+            "value": vessel_cost,
+            "objects": ["EQ-V101"],
+            "inputs": [
+                {"name": "Published holdup volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+            ],
+            "criteria": [
+                {"name": "Demo base cost", "value": 75000.0, "unit": currency},
+                {"name": "Demo volume coefficient", "value": 4200.0, "unit": f"{currency}/m3"},
+            ],
+            "formula": "75000 + holdup_volume_m3 × 4200",
+        },
+        {
+            "record_id": "COST-P101",
+            "name": "P-101 demo parametric class estimate",
+            "value": pump_cost,
+            "objects": ["EQ-P101"],
+            "inputs": [
+                {"name": "Published preliminary motor", "value": round(n["motor_preliminary_kw"], 3), "unit": "kW"},
+            ],
+            "criteria": [
+                {"name": "Demo base cost", "value": 18000.0, "unit": currency},
+                {"name": "Demo motor coefficient", "value": 950.0, "unit": f"{currency}/kW"},
+            ],
+            "formula": "18000 + preliminary_motor_kw × 950",
+        },
+        {
+            "record_id": "COST-FCV101",
+            "name": "FCV-101 demo parametric class estimate",
+            "value": valve_cost,
+            "objects": ["VLV-FCV101", "EQ-P101"],
+            "inputs": [
+                {"name": "Published FCV design Cv", "value": round(design_cv, 3)},
+            ],
+            "criteria": [
+                {"name": "Demo base cost", "value": 5000.0, "unit": currency},
+                {"name": "Demo Cv coefficient", "value": 180.0, "unit": f"{currency}/Cv"},
+            ],
+            "formula": "5000 + design_cv × 180",
+        },
+    ]
+
     record_ids = []
-    for record_id, name, value, objects in [
-        ("COST-V101", "V-101 demo parametric class estimate", vessel_cost, ["EQ-V101"]),
-        ("COST-P101", "P-101 demo parametric class estimate", pump_cost, ["EQ-P101"]),
-        ("COST-FCV101", "FCV-101 demo parametric class estimate", valve_cost, ["VLV-FCV101"]),
-    ]:
+    for spec in cost_specs:
         record_ids.append(
             _upsert_record(
                 session,
-                record_id=record_id,
+                record_id=spec["record_id"],
                 domain=RecordDomain.COST,
-                name=name,
-                value=round(value, 2),
+                name=spec["name"],
+                value=round(spec["value"], 2),
                 unit=currency,
                 status="class_estimate_demo",
                 source_id="COST-MODEL-DEMO-V1",
                 method="transparent demo parametric estimate; replace with qualified company cost model",
-                object_ids=objects,
-                metadata={"estimate_class": "demo", "commercial_use": False},
+                object_ids=spec["objects"],
+                metadata={
+                    "estimate_class": "demo",
+                    "commercial_use": False,
+                    **_calculation_detail(
+                        inputs=spec["inputs"],
+                        criteria=spec["criteria"],
+                        case_results=[],
+                        governing_case="Published technical basis",
+                        governing_reason="Cost estimate uses the latest published technical output for this item; no separate process case is selected in the demo cost model.",
+                        outputs=[
+                            {"name": "Estimated cost", "value": round(spec["value"], 2), "unit": currency},
+                        ],
+                        method=f'Demo parametric formula: {spec["formula"]}. Replace with the approved company/licensor cost-estimation service.',
+                    ),
+                },
             )
         )
 
@@ -1228,7 +1283,29 @@ def publish_costing(session: Session) -> PublicationResult:
             source_id="COST-MODEL-DEMO-V1",
             method="sum of demo parametric discipline estimates",
             object_ids=["EQ-V101", "EQ-P101", "VLV-FCV101"],
-            metadata={"estimate_class": "demo", "commercial_use": False},
+            metadata={
+                "estimate_class": "demo",
+                "commercial_use": False,
+                **_calculation_detail(
+                    inputs=[
+                        {"name": "V-101 estimate", "value": round(vessel_cost, 2), "unit": currency},
+                        {"name": "P-101 estimate", "value": round(pump_cost, 2), "unit": currency},
+                        {"name": "FCV-101 estimate", "value": round(valve_cost, 2), "unit": currency},
+                        {"name": "Instrumentation package allowance", "value": round(instrumentation_package, 2), "unit": currency},
+                    ],
+                    criteria=[
+                        {"name": "Estimate class", "value": "Demo / non-commercial"},
+                        {"name": "Currency", "value": currency},
+                    ],
+                    case_results=[],
+                    governing_case="Current published multidisciplinary basis",
+                    governing_reason="Section total is the arithmetic roll-up of the current demo equipment, valve and instrumentation estimates.",
+                    outputs=[
+                        {"name": "Section total", "value": round(total, 2), "unit": currency},
+                    ],
+                    method="Demo multidisciplinary cost roll-up; replace coefficients and scope factors with approved estimating methodology.",
+                ),
+            },
         )
     )
 
