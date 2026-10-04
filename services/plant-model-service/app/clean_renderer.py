@@ -57,7 +57,7 @@ def render_clean_pid_html(
 body{{margin:0;font-family:Arial,Helvetica,sans-serif;background:#e7e9ec;color:#111}}
 header{{background:#fff;border-bottom:1px solid #aaa;padding:11px 16px;display:flex;justify-content:space-between}}
 header a{{margin-left:14px;color:#174a77;text-decoration:none;font-size:12px}}
-main{{display:grid;grid-template-columns:minmax(900px,1fr) 300px;gap:12px;padding:12px}}
+main{{display:grid;grid-template-columns:minmax(900px,1fr) 430px;gap:12px;padding:12px}}
 .sheet{{background:#fff;border:1px solid #777;overflow:auto}}
 .side{{background:#fff;border:1px solid #aaa;padding:14px}}
 svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
@@ -82,11 +82,21 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .card .value{{font-weight:700;margin-top:3px}} .prov{{color:#6b7280;font-size:9px;margin-top:4px}}
 .empty{{font-size:10px;color:#6b7280;padding:10px 0}}
 .object-head{{border-bottom:1px solid #ddd;padding-bottom:8px}}
+.view-switch{{display:flex;gap:6px;margin:10px 0 6px}}
+.view-btn{{font-size:10px;padding:6px 9px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
+.view-btn.active{{background:#0f172a;color:#fff}}
+.property-group{{border:1px solid #cbd5e1;margin:8px 0;background:#fff}}
+.property-group-title{{background:#e2e8f0;font:700 10px Arial;padding:6px 8px;text-transform:uppercase;letter-spacing:.2px}}
+.property-row{{display:grid;grid-template-columns:45% 55%;border-top:1px solid #e5e7eb;font-size:10px}}
+.property-name{{padding:6px 7px;background:#f8fafc;border-right:1px solid #e5e7eb}}
+.property-value{{padding:6px 7px;word-break:break-word}}
+.property-source{{grid-column:1 / 3;padding:4px 7px 6px;color:#64748b;font-size:9px;border-top:1px dotted #e2e8f0}}
+#propertiesContent{{display:none}}
 </style>
 </head>
 <body>
 <header>
-<div><strong>Digital BDEP — Engineering View</strong><div class="muted">MVP 0.5C · cleanup + annotation intelligence</div></div>
+<div><strong>Digital BDEP — Engineering View</strong><div class="muted">MVP 0.6D · connected P&ID + object-centric Digital Thread inspector</div></div>
 <nav><a href="/engineering-05b">0.5B</a><a href="/engineering-skeleton">Skeleton</a><a href="/graph">Graph View</a></nav>
 </header>
 <main>
@@ -181,10 +191,17 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <h3 id="objectTag">Digital BDEP Object</h3>
 <div id="objectMeta" class="muted">Click V-101, P-101 or FCV-101</div>
 </div>
+<div class="view-switch">
+<button id="tabsModeBtn" class="view-btn active" onclick="setInspectorMode('tabs')">Tabs</button>
+<button id="propertiesModeBtn" class="view-btn" onclick="setInspectorMode('properties')">Properties</button>
+</div>
+<div id="tabsMode">
 <div class="tabs" id="tabs"></div>
 <div id="tabContent">
 <div class="empty">Select an engineering object to open its object-centric digital thread.</div>
 </div>
+</div>
+<div id="propertiesContent"></div>
 <div class="section">Drawing quality</div>
 <div class="metric"><b>Status:</b> {status}</div>
 <div class="metric"><b>Detected issues:</b> {len(quality_issues)}</div>
@@ -219,6 +236,7 @@ const domainMap={{
 }};
 let selectedId=null;
 let activeTab="overview";
+let inspectorMode="tabs";
 
 function esc(v){{
  return String(v ?? "—").replace(/[&<>"']/g,m=>({{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}}[m]));
@@ -233,6 +251,44 @@ function card(name,value,unit,status,p){{
 }}
 function recordsFor(d,key){{
  return (d.records||{{}})[key]||[];
+}}
+function sourceLine(p){{
+ if(!p)return "";
+ const bits=[p.source_type,p.source_id,p.source_revision?("Rev "+p.source_revision):null,p.method,p.note].filter(Boolean);
+ return bits.join(" · ");
+}}
+function propertyRow(name,value,unit,p){{
+ const src=sourceLine(p);
+ return '<div class="property-row"><div class="property-name">'+esc(name)+'</div><div class="property-value">'+esc(value)+(unit?(" "+esc(unit)):"")+'</div>'+(src?'<div class="property-source">Source: '+esc(src)+'</div>':"")+'</div>';
+}}
+function propertyGroup(title,items){{
+ if(!items.length)return "";
+ return '<div class="property-group"><div class="property-group-title">'+esc(title)+'</div>'+items.join("")+'</div>';
+}}
+function renderProperties(d){{
+ const groups=[];
+ groups.push(propertyGroup("Identification",[
+   propertyRow("Object ID",d.object_id,null,null),
+   propertyRow("Tag",d.tag,null,null),
+   propertyRow("Type",d.object_type||d.category,null,null),
+   propertyRow("Service",d.service||"—",null,null)
+ ]));
+ groups.push(propertyGroup("Design Basis",(d.design_basis||[]).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance))));
+ const definitions=[
+   ["Process / Simulation","simulation"],
+   ["Calculations","process_calculation"],
+   ["P&ID","pid"],
+   ["Instrumentation","instrumentation"],
+   ["Mechanical","mechanical"],
+   ["Electrical","electrical"],
+   ["Cost","cost"],
+   ["EPC / Vendor","epc_vendor"],
+   ["Operations","operations"]
+ ];
+ definitions.forEach(([title,key])=>{{
+   groups.push(propertyGroup(title,recordsFor(d,key).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance))));
+ }});
+ document.getElementById("propertiesContent").innerHTML=groups.filter(Boolean).join("")||'<div class="empty">No properties available.</div>';
 }}
 function renderTabs(){{
  document.getElementById("tabs").innerHTML=tabDefs.map(([id,label])=>'<button class="tab '+(activeTab===id?"active":"")+'" onclick="openTab(\''+id+'\')">'+label+'</button>').join("");
@@ -258,9 +314,22 @@ function render(){{
    html=recordsFor(d,key).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No linked records yet for this discipline.</div>';
  }}
  document.getElementById("tabContent").innerHTML=html;
+ renderProperties(d);
 }}
 function openTab(tab){{activeTab=tab;render();}}
-function selectObject(id){{selectedId=id;activeTab="overview";render();}}
+function setInspectorMode(mode){{
+ inspectorMode=mode;
+ const tabsMode=document.getElementById("tabsMode");
+ const props=document.getElementById("propertiesContent");
+ const tabsBtn=document.getElementById("tabsModeBtn");
+ const propsBtn=document.getElementById("propertiesModeBtn");
+ tabsMode.style.display=mode==="tabs"?"block":"none";
+ props.style.display=mode==="properties"?"block":"none";
+ tabsBtn.classList.toggle("active",mode==="tabs");
+ propsBtn.classList.toggle("active",mode==="properties");
+ if(selectedId&&dossiers[selectedId])renderProperties(dossiers[selectedId]);
+}}
+function selectObject(id){{selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);}}
 if(dossiers["EQ-V101"])selectObject("EQ-V101");
 </script>
 </body></html>"""
