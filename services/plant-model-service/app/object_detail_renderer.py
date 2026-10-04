@@ -187,6 +187,12 @@ def render_object_detail_html(dossier: ObjectDossier) -> str:
         for record in records
     ]
     maturity = "Published / Mixed Discipline Maturity" if statuses else "Basis only"
+    if dossier.design_basis:
+        basis_source = dossier.design_basis[0].provenance.source_id
+        basis_revision = dossier.design_basis[0].provenance.source_revision or "—"
+    else:
+        basis_source = "No linked Design Basis"
+        basis_revision = "—"
 
     return f"""<!doctype html>
 <html>
@@ -228,6 +234,7 @@ th{{background:#f1f5f9;position:sticky;top:0}} .tablewrap{{overflow:auto;max-hei
 <h1>{html.escape(dossier.tag)}</h1>
 <div class="muted">{html.escape(dossier.object_type or dossier.category)} · {html.escape(dossier.service or "")}</div>
 <div class="muted">Object ID: {html.escape(dossier.object_id)}</div>
+<div class="muted">Governing basis: {html.escape(basis_source)} Rev {html.escape(basis_revision)}</div>
 </div>
 <span class="chip">{html.escape(maturity)}</span>
 </section>
