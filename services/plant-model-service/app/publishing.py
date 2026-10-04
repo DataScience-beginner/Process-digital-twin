@@ -381,6 +381,21 @@ def _process_numbers(session: Session) -> dict[str, float]:
 
 _STANDARD_NPS_IN = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0]
 
+# Configured demo internal-diameter table. These values are deliberately kept
+# inside the project configuration rather than claimed as a standards-certified
+# pipe schedule database. Final projects should load the approved piping spec.
+_DEMO_PIPE_ID_IN = {
+    1.0: 1.049,
+    1.5: 1.610,
+    2.0: 2.067,
+    3.0: 3.068,
+    4.0: 4.026,
+    6.0: 6.065,
+    8.0: 7.981,
+    10.0: 10.020,
+    12.0: 11.938,
+}
+
 
 def _stream_case_table(stream_id: str) -> list[dict[str, Any]]:
     rows = []
@@ -401,12 +416,87 @@ def _stream_case_table(stream_id: str) -> list[dict[str, Any]]:
                 "pressure_barg": float(stream.pressure),
                 "temperature_degC": float(stream.temperature),
                 "density_kgm3": float(stream.density) if stream.density is not None else None,
+                "viscosity_cp": float(stream.viscosity) if stream.viscosity is not None else None,
             }
         )
     return rows
 
 
-def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) -> dict[str, Any]:
+def _darcy_friction_factor(
+    reynolds: float,
+    *,
+    roughness_m: float,
+    diameter_m: float,
+) -> float:
+    if reynolds <= 0:
+        return 0.0
+    if reynolds < 2300.0:
+        return 64.0 / reynolds
+    return 0.25 / (
+        math.log10(
+            roughness_m / (3.7 * diameter_m)
+            + 5.74 / (reynolds**0.9)
+        )
+        ** 2
+    )
+
+
+def _hydraulic_point(
+    *,
+    flow_tph: float,
+    density_kgm3: float,
+    viscosity_cp: float,
+    nps_in: float,
+    roughness_mm: float,
+    equivalent_length_m: float,
+) -> dict[str, float]:
+    q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
+    internal_diameter_in = _DEMO_PIPE_ID_IN[nps_in]
+    diameter_m = internal_diameter_in * 0.0254
+    area_m2 = math.pi * diameter_m**2 / 4.0
+    velocity_ms = q_m3s / area_m2 if area_m2 else 0.0
+    viscosity_pa_s = viscosity_cp * 0.001
+    reynolds = (
+        density_kgm3 * velocity_ms * diameter_m / viscosity_pa_s
+        if viscosity_pa_s > 0
+        else 0.0
+    )
+    roughness_m = roughness_mm / 1000.0
+    friction_factor = _darcy_friction_factor(
+        reynolds,
+        roughness_m=roughness_m,
+        diameter_m=diameter_m,
+    )
+    dynamic_pressure_pa = density_kgm3 * velocity_ms**2 / 2.0
+    friction_dp_pa = (
+        friction_factor
+        * (equivalent_length_m / diameter_m)
+        * dynamic_pressure_pa
+        if diameter_m > 0
+        else 0.0
+    )
+    return {
+        "flow_m3s": q_m3s,
+        "internal_diameter_in": internal_diameter_in,
+        "internal_diameter_m": diameter_m,
+        "area_m2": area_m2,
+        "velocity_ms": velocity_ms,
+        "reynolds": reynolds,
+        "friction_factor": friction_factor,
+        "friction_dp_bar": friction_dp_pa / 100000.0,
+    }
+
+
+def _select_nps(
+    flow_tph: float,
+    density_kgm3: float,
+    viscosity_cp: float,
+    *,
+    max_velocity_ms: float,
+    roughness_mm: float,
+    equivalent_length_m: float,
+    max_friction_dp_bar: float,
+) -> dict[str, Any]:
     q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
     required_area_m2 = q_m3s / max_velocity_ms
     required_d_m = math.sqrt(4.0 * required_area_m2 / math.pi)
@@ -414,18 +504,31 @@ def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) ->
 
     candidate_checks = []
     for size in _STANDARD_NPS_IN:
-        diameter_m = size * 0.0254
-        area_m2 = math.pi * diameter_m**2 / 4.0
-        velocity_ms = q_m3s / area_m2
+        point = _hydraulic_point(
+            flow_tph=flow_tph,
+            density_kgm3=density_kgm3,
+            viscosity_cp=viscosity_cp,
+            nps_in=size,
+            roughness_mm=roughness_mm,
+            equivalent_length_m=equivalent_length_m,
+        )
+        velocity_ok = point["velocity_ms"] <= max_velocity_ms
+        dp_ok = point["friction_dp_bar"] <= max_friction_dp_bar
         candidate_checks.append(
             {
                 "candidate_nps_in": size,
-                "assumed_diameter_in": size,
-                "area_m2": round(area_m2, 6),
-                "velocity_ms": round(velocity_ms, 3),
+                "configured_internal_diameter_in": round(point["internal_diameter_in"], 4),
+                "area_m2": round(point["area_m2"], 6),
+                "velocity_ms": round(point["velocity_ms"], 3),
                 "velocity_limit_ms": max_velocity_ms,
-                "margin_ms": round(max_velocity_ms - velocity_ms, 3),
-                "result": "PASS" if velocity_ms <= max_velocity_ms else "FAIL",
+                "reynolds": round(point["reynolds"], 0),
+                "friction_factor": round(point["friction_factor"], 5),
+                "equivalent_length_m": equivalent_length_m,
+                "friction_dp_bar": round(point["friction_dp_bar"], 4),
+                "friction_dp_limit_bar": max_friction_dp_bar,
+                "velocity_check": "PASS" if velocity_ok else "FAIL",
+                "pressure_drop_check": "PASS" if dp_ok else "FAIL",
+                "result": "PASS" if velocity_ok and dp_ok else "FAIL",
             }
         )
 
@@ -436,8 +539,8 @@ def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) ->
     ]
     if not passing:
         raise PublicationBlocked(
-            f"No standard demo NPS satisfies velocity <= {max_velocity_ms:g} m/s "
-            f"for {flow_tph:g} t/h at {density_kgm3:g} kg/m3."
+            "No configured demo NPS satisfies both velocity and frictional "
+            f"pressure-drop criteria for {flow_tph:g} t/h."
         )
 
     selected = passing[0]
@@ -466,17 +569,33 @@ def _select_nps(flow_tph: float, density_kgm3: float, max_velocity_ms: float) ->
         "required_diameter_m": required_d_m,
         "required_diameter_in": required_in,
         "selected_nps_in": selected,
+        "selected_internal_diameter_in": selected_row["configured_internal_diameter_in"],
         "selected_velocity_ms": selected_row["velocity_ms"],
+        "selected_reynolds": selected_row["reynolds"],
+        "selected_friction_factor": selected_row["friction_factor"],
+        "selected_friction_dp_bar": selected_row["friction_dp_bar"],
         "candidate_checks": candidate_checks,
         "previous_candidate": previous_row,
     }
 
 
-def _velocity_for_case(flow_tph: float, density_kgm3: float, nps_in: float) -> float:
-    q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
-    diameter_m = nps_in * 0.0254
-    area = math.pi * diameter_m**2 / 4.0
-    return q_m3s / area
+def _hydraulic_for_case(
+    *,
+    flow_tph: float,
+    density_kgm3: float,
+    viscosity_cp: float,
+    nps_in: float,
+    roughness_mm: float,
+    equivalent_length_m: float,
+) -> dict[str, float]:
+    return _hydraulic_point(
+        flow_tph=flow_tph,
+        density_kgm3=density_kgm3,
+        viscosity_cp=viscosity_cp,
+        nps_in=nps_in,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=equivalent_length_m,
+    )
 
 
 def _line_number(
