@@ -7,6 +7,8 @@ from app.dashboard_renderer import render_dashboard_html
 from app.db_schema import create_schema
 from app.drafter import build_drafter_instrumented
 from app.object_detail_renderer import render_object_detail_html
+from app.entity_detail_renderer import render_entity_detail_html
+from app.inspection_graph import build_inspection_graph
 from app.persistence import load_object_dossier, seed_demo_database
 from app.publishing import publication_status, publish_all
 from app.simulation import publish_demo_simulation
@@ -257,3 +259,153 @@ def test_dashboard_rolls_child_instruments_and_valves_into_primary_equipment():
     assert html.count('/object/EQ-V101/detail') == 1
     assert html.count('/object/EQ-P101/detail') == 1
     assert '/object/VLV-FCV101/detail' not in html
+
+
+
+def test_line_sizing_has_full_equation_trace_and_candidate_selection():
+    engine = _published_engine()
+    with Session(engine) as session:
+        pump = load_object_dossier(session, "EQ-P101")
+
+    record = next(
+        record
+        for records in pump.records.values()
+        for record in records
+        if record.id == "LINE-1102-SIZING"
+    )
+    trace = record.metadata["calculation_detail"]["trace"]
+
+    assert trace["trace_id"] == "TRACE-LINE-1102-SIZING"
+    assert len(trace["steps"]) >= 8
+    assert trace["steps"][1]["equation"] == "Q = W × 1000 / (rho × 3600)"
+    assert trace["steps"][1]["substitution"]
+    assert trace["selection_checks"]
+
+    selected = next(
+        row for row in trace["selection_checks"]
+        if row["candidate_nps_in"] == 8.0
+    )
+    smaller = next(
+        row for row in trace["selection_checks"]
+        if row["candidate_nps_in"] == 6.0
+    )
+    assert selected["result"] == "PASS"
+    assert smaller["result"] == "FAIL"
+
+    checks = {row["check"]: row["result"] for row in trace["validation_checks"]}
+    assert checks["Selected velocity <= Design Basis limit"] == "PASS"
+    assert checks["Previous smaller standard size rejected when applicable"] == "PASS"
+    assert trace["assumptions"]
+    assert trace["limitations"]
+    assert trace["downstream_consumers"]
+
+
+def test_pump_vessel_and_fcv_have_full_calculation_traces():
+    engine = _published_engine()
+    with Session(engine) as session:
+        vessel = load_object_dossier(session, "EQ-V101")
+        pump = load_object_dossier(session, "EQ-P101")
+        fcv = load_object_dossier(session, "VLV-FCV101")
+
+    vessel_record = next(
+        record for records in vessel.records.values() for record in records
+        if record.id == "CALC-V101-HOLDUP"
+    )
+    pump_record = next(
+        record for records in pump.records.values() for record in records
+        if record.id == "CALC-P101-RATED-FLOW"
+    )
+    fcv_record = next(
+        record for records in fcv.records.values() for record in records
+        if record.id == "CALC-FCV101-CV"
+    )
+
+    vessel_trace = vessel_record.metadata["calculation_detail"]["trace"]
+    pump_trace = pump_record.metadata["calculation_detail"]["trace"]
+    fcv_trace = fcv_record.metadata["calculation_detail"]["trace"]
+
+    assert len(vessel_trace["steps"]) == 4
+    assert any("V_holdup" in step["equation"] for step in vessel_trace["steps"])
+
+    assert len(pump_trace["steps"]) == 9
+    assert any("P_hyd" in step["equation"] for step in pump_trace["steps"])
+    assert any("P_shaft" in step["equation"] for step in pump_trace["steps"])
+    assert any("P_motor" in step["equation"] for step in pump_trace["steps"])
+
+    assert len(fcv_trace["steps"]) == 6
+    assert any("Kv" in step["equation"] for step in fcv_trace["steps"])
+    opening_checks = {
+        row["check"]: row["result"]
+        for row in fcv_trace["validation_checks"]
+    }
+    assert opening_checks["Normal opening target"] == "PENDING TRIM/CHARACTERISTIC"
+
+
+def test_psv_trace_is_explicitly_gated_not_fake_final_sizing():
+    engine = _published_engine()
+    with Session(engine) as session:
+        psv = load_object_dossier(session, "VLV-PSV101")
+
+    record = next(
+        record for records in psv.records.values() for record in records
+        if record.id == "RELIEF-PSV101-BASIS"
+    )
+    trace = record.metadata["calculation_detail"]["trace"]
+    checks = {row["check"]: row["result"] for row in trace["validation_checks"]}
+
+    assert trace["qualification"].startswith("Safety-critical")
+    assert checks["Final governing scenario established"] == "GATED"
+    assert checks["Final orifice sizing permitted"] == "GATED"
+    assert any("not a final" in item.lower() for item in trace["limitations"])
+
+
+def test_detailed_renderers_show_full_calculation_trace():
+    engine = _published_engine()
+    model = demo_integrated_configuration_model()
+    plan = build_drafter_instrumented(model)
+
+    with Session(engine) as session:
+        dossiers = {
+            obj.id: load_object_dossier(session, obj.id)
+            for obj in model.objects
+        }
+        pump = dossiers["EQ-P101"]
+
+    pump_html = render_object_detail_html(pump)
+    assert "Full Calculation Trace" in pump_html
+    assert "Equation / Substitution Steps" in pump_html
+    assert "Validation Checks" in pump_html
+    assert "Limitations / Qualification Gaps" in pump_html
+
+    inspection = build_inspection_graph(model, dossiers, plan.routes)
+    line_html = render_entity_detail_html(inspection["entities"]["LINE-1102"])
+    assert "Full Calculation Trace" in line_html
+    assert "Candidate / Selection Checks" in line_html
+    assert "Q = W × 1000 / (rho × 3600)" in line_html
+    assert "6.0" in line_html
+    assert "FAIL" in line_html
+    assert "8.0" in line_html
+    assert "PASS" in line_html
+
+
+def test_engineering_view_embeds_full_trace_ui():
+    engine = _published_engine()
+    model = demo_integrated_configuration_model()
+    plan = build_drafter_instrumented(model)
+    cleanup = build_cleanup(plan)
+
+    with Session(engine) as session:
+        dossiers = {
+            obj.id: load_object_dossier(session, obj.id)
+            for obj in model.objects
+        }
+        stages = publication_status(session)
+
+    html = render_clean_pid_html(
+        model, plan, cleanup, dossiers, publication_stages=stages
+    )
+    assert "Full Calculation Trace" in html
+    assert "Equation / Substitution Steps" in html
+    assert "Candidate / Selection Checks" in html
+    assert "Limitations / Qualification Gaps" in html
+    assert "TRACE-LINE-1102-SIZING" in html
