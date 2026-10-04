@@ -151,6 +151,7 @@ main.workspace-grid{{display:grid;grid-template-columns:270px minmax(650px,1fr) 
 .draft-object .draft-label{{font:700 8px Arial;fill:#9a3412}}
 .draft-connector{{fill:none;stroke:#ea580c;stroke-width:1.4;stroke-dasharray:5 3;cursor:pointer}}
 .draft-connector.signal-kind{{stroke:#2563eb;stroke-dasharray:7 4}}
+.draft-connector.impulse-kind{{stroke:#166534;stroke-dasharray:3 3}}
 .draft-connector:hover{{stroke-width:2.4}}
 .change-json{{white-space:pre-wrap;background:#0f172a;color:#e2e8f0;padding:10px;border-radius:5px;font:9px monospace;max-height:420px;overflow:auto}}
 svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
@@ -286,6 +287,22 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
   </div>
   <div class="workspace-section">
     <div class="workspace-heading">Drafting Assistance</div>
+    <div style="display:grid;gap:5px;margin-bottom:6px">
+      <label style="font-size:8px">Connector type
+        <select id="connectorKindMode" style="width:100%;font-size:8px;padding:4px;border:1px solid #cbd5e1">
+          <option value="auto">Auto-guided</option>
+          <option value="process">Process line</option>
+          <option value="signal">Control signal</option>
+          <option value="impulse">Impulse / sensing</option>
+        </select>
+      </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:8px">
+        <label><input id="optSnap" type="checkbox" checked> Grid snap</label>
+        <label><input id="optOrthogonal" type="checkbox" checked> Orthogonal route</label>
+        <label><input id="optOverlap" type="checkbox" checked> Avoid overlap</label>
+        <label><input id="optBoundary" type="checkbox" checked> Keep in sheet</label>
+      </div>
+    </div>
     <div class="tool-grid">
       <button id="connectorBtn" class="tool-btn" onclick="toggleConnectorMode()">Guided Connector</button>
       <button class="tool-btn" onclick="autoCorrectDrafts()">Auto-correct</button>
@@ -1035,7 +1052,8 @@ function createDraftConnection(sourceId,targetId){{
  if(!s||!t){{setToolStatus("Could not resolve visible anchors for the requested connection.");return;}}
  draftConnectionCounter+=1;
  const id="DRAFT-CONN-"+draftConnectionCounter;
- const kind=connectorKindSuggestion(sourceId,targetId);
+ const requested=document.getElementById("connectorKindMode")?.value||"auto";
+ const kind=requested==="auto"?connectorKindSuggestion(sourceId,targetId):requested;
  const conn={{id,source_id:sourceId,target_id:targetId,kind,status:"DRAFT"}};
  draftConnections.push(conn);
  draftActions.push({{action:"add_connection",id}});
@@ -1050,28 +1068,37 @@ function redrawDraftConnections(){{
  draftConnections.forEach(conn=>{{
    const s=entityCenter(conn.source_id),t=entityCenter(conn.target_id);
    if(!s||!t)return;
+   const orthogonal=document.getElementById("optOrthogonal")?.checked!==false;
    const mid=snap((s.x+t.x)/2);
    const poly=document.createElementNS(svgNS,"polyline");
-   poly.setAttribute("class","draft-connector "+(conn.kind==="signal"?"signal-kind":""));
-   poly.setAttribute("points",s.x+","+s.y+" "+mid+","+s.y+" "+mid+","+t.y+" "+t.x+","+t.y);
+   poly.setAttribute("class","draft-connector "+(conn.kind==="signal"?"signal-kind":(conn.kind==="impulse"?"impulse-kind":"")));
+   poly.setAttribute("points",orthogonal?(s.x+","+s.y+" "+mid+","+s.y+" "+mid+","+t.y+" "+t.x+","+t.y):(s.x+","+s.y+" "+t.x+","+t.y));
    poly.setAttribute("data-route-entity-id",conn.id);
    poly.setAttribute("onclick","selectEntity('"+conn.id+"')");
    layer.appendChild(poly);
  }});
 }}
 function autoCorrectDrafts(){{
+ autoSnap=document.getElementById("optSnap")?.checked!==false;
+ const avoidOverlap=document.getElementById("optOverlap")?.checked!==false;
+ const keepInSheet=document.getElementById("optBoundary")?.checked!==false;
  const occupied=[];
  draftObjects.forEach(obj=>{{
-   obj.x=snap(Math.max(60,Math.min(1050,obj.x)));
-   obj.y=snap(Math.max(60,Math.min(555,obj.y)));
+   if(autoSnap){{obj.x=snap(obj.x);obj.y=snap(obj.y);}}
+   if(keepInSheet){{obj.x=Math.max(60,Math.min(1050,obj.x));obj.y=Math.max(60,Math.min(555,obj.y));}}
    let guard=0;
-   while(occupied.some(p=>Math.abs(p.x-obj.x)<55&&Math.abs(p.y-obj.y)<45)&&guard<8){{obj.y=snap(Math.min(555,obj.y+60));guard+=1;}}
+   while(avoidOverlap&&occupied.some(p=>Math.abs(p.x-obj.x)<55&&Math.abs(p.y-obj.y)<45)&&guard<8){{obj.y=snap(Math.min(555,obj.y+60));guard+=1;}}
    occupied.push({{x:obj.x,y:obj.y}});
    const el=document.getElementById("svg-"+obj.id);
    if(el)el.setAttribute("transform","translate("+obj.x+" "+obj.y+")");
  }});
  redrawDraftConnections();
- setToolStatus("Auto-correct complete: grid snap, drawing-boundary clamp, basic overlap separation and orthogonal connector routing applied.");
+ const applied=[];
+ if(autoSnap)applied.push("grid snap");
+ if(keepInSheet)applied.push("sheet-boundary clamp");
+ if(avoidOverlap)applied.push("overlap separation");
+ if(document.getElementById("optOrthogonal")?.checked!==false)applied.push("orthogonal routing");
+ setToolStatus("Auto-correct complete: "+(applied.join(", ")||"no correction options enabled")+".");
 }}
 function validateDrafts(){{
  const issues=[];
