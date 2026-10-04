@@ -10,8 +10,12 @@ from .models import PlantModel
 from .thread_models import ObjectDossier
 
 
-def _annotation_svg(cleanup: CleanupResult) -> str:
+def _annotation_svg(
+    cleanup: CleanupResult,
+    line_labels: dict[str, str] | None = None,
+) -> str:
     parts = []
+    overrides = line_labels or {}
     for ann in cleanup.annotations:
         css = {
             AnnotationKind.LINE_TAG: "linetag",
@@ -20,9 +24,10 @@ def _annotation_svg(cleanup: CleanupResult) -> str:
             AnnotationKind.EQUIPMENT_TAG: "tag",
             AnnotationKind.TITLE: "title",
         }[ann.kind]
+        display_text = overrides.get(ann.annotation_id, ann.text)
         parts.append(
             f'<text class="{css}" x="{ann.position.x}" y="{ann.position.y + ann.height - 2}" '
-            f'data-annotation-id="{html.escape(ann.annotation_id)}">{html.escape(ann.text)}</text>'
+            f'data-annotation-id="{html.escape(ann.annotation_id)}">{html.escape(display_text)}</text>'
         )
     return "".join(parts)
 
@@ -54,6 +59,24 @@ def render_clean_pid_html(
             for item in (publication_stages or [])
         ]
     ).replace("</", "<\\/")
+
+    line_labels = {
+        "ANN-L-V101-LIQ": "1102",
+        "ANN-L-P101-DIS": "1103",
+        "ANN-L-P101-REC": "1190",
+    }
+    for dossier in (dossiers or {}).values():
+        for records in dossier.records.values():
+            for record in records:
+                if not record.id.startswith("LINE-") or not isinstance(record.value, dict):
+                    continue
+                line_number = record.value.get("line_number")
+                if record.id == "LINE-1102-SIZING" and line_number:
+                    line_labels["ANN-L-V101-LIQ"] = str(line_number)
+                elif record.id == "LINE-1103-SIZING" and line_number:
+                    line_labels["ANN-L-P101-DIS"] = str(line_number)
+                elif record.id == "LINE-1190-SIZING" and line_number:
+                    line_labels["ANN-L-P101-REC"] = str(line_number)
 
     return f"""<!doctype html>
 <html>
@@ -99,6 +122,22 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .sv-val{{padding:5px 6px;word-break:break-word}} .sv-list{{margin:0;padding-left:16px;font-weight:400}}
 .empty{{font-size:10px;color:#6b7280;padding:10px 0}}
 .object-head{{border-bottom:1px solid #ddd;padding-bottom:8px}}
+.object-actions{{display:flex;gap:6px;margin-top:8px}}
+.detail-btn{{font-size:10px;padding:6px 8px;border:1px solid #64748b;background:#fff;border-radius:4px;cursor:pointer}}
+.detail-btn:hover{{background:#eff6ff}}
+dialog{{width:min(1040px,92vw);max-height:86vh;border:1px solid #64748b;border-radius:8px;padding:0}}
+dialog::backdrop{{background:rgba(15,23,42,.45)}}
+.dialog-head{{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid #ddd;background:#f8fafc;position:sticky;top:0}}
+.dialog-body{{padding:14px;overflow:auto;max-height:72vh}}
+.dialog-close{{border:1px solid #94a3b8;background:#fff;border-radius:4px;padding:5px 8px;cursor:pointer}}
+.detail-section{{border:1px solid #dbe1e8;border-radius:5px;margin:8px 0;padding:8px}}
+.detail-section h4{{font-size:10px;text-transform:uppercase;margin:0 0 7px;color:#334155}}
+.detail-record{{border-top:1px solid #e5e7eb;padding:7px 0;font-size:10px}}
+.detail-record:first-child{{border-top:0}}
+.detail-sub{{font-size:9px;color:#64748b;margin-top:4px}}
+.case-table{{border-collapse:collapse;width:100%;font-size:9px;margin-top:6px}}
+.case-table th,.case-table td{{border:1px solid #ddd;padding:4px;text-align:left;vertical-align:top}}
+.case-table th{{background:#f1f5f9}}
 .view-switch{{display:flex;gap:6px;margin:10px 0 6px}}
 .view-btn{{font-size:10px;padding:6px 9px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
 .view-btn.active{{background:#0f172a;color:#fff}}
@@ -197,7 +236,7 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <text x="520" y="284" text-anchor="middle" class="txt">FCV-101</text>
 </g>
 
-{_annotation_svg(cleanup)}
+{_annotation_svg(cleanup, line_labels)}
 
 <!-- Title block -->
 <text class="title" x="775" y="612">DIGITAL BDEP - P&ID</text>
@@ -212,6 +251,10 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <div class="object-head">
 <h3 id="objectTag">Digital BDEP Object</h3>
 <div id="objectMeta" class="muted">Click equipment, PSV, control valves or key instruments</div>
+<div class="object-actions">
+<button class="detail-btn" onclick="openDetailModal()">↗ Detailed View</button>
+<button class="detail-btn" onclick="popOutDetail()">⧉ Pop out</button>
+</div>
 </div>
 <div class="view-switch">
 <button id="tabsModeBtn" class="view-btn active" onclick="setInspectorMode('tabs')">Tabs</button>
@@ -229,6 +272,13 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <div class="metric"><b>Detected issues:</b> {len(quality_issues)}</div>
 </aside>
 </main>
+<dialog id="detailDialog">
+<div class="dialog-head">
+<div><strong id="dialogTitle">Detailed View</strong><div class="muted" id="dialogSub"></div></div>
+<div><button class="detail-btn" onclick="popOutDetail()">⧉ Pop out</button> <button class="dialog-close" onclick="document.getElementById('detailDialog').close()">Close</button></div>
+</div>
+<div class="dialog-body" id="dialogBody"></div>
+</dialog>
 <script>
 const dossiers={dossier_payload};
 let publicationStages={stage_payload};
@@ -398,6 +448,54 @@ function render(){{
  }}
  document.getElementById("tabContent").innerHTML=html;
  renderProperties(d);
+}}
+function detailTable(rows){{
+ if(!Array.isArray(rows)||!rows.length)return '<div class="empty">No data.</div>';
+ const keys=[];
+ rows.forEach(row=>Object.keys(row||{{}}).forEach(k=>{{if(!keys.includes(k))keys.push(k);}}));
+ return '<div style="overflow:auto"><table class="case-table"><thead><tr>'+keys.map(k=>'<th>'+esc(humanKey(k))+'</th>').join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+keys.map(k=>'<td>'+formatValue(row[k],null)+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+}}
+function detailList(rows){{
+ if(!Array.isArray(rows)||!rows.length)return '<div class="empty">No data.</div>';
+ return '<div class="structured-value">'+rows.map(x=>'<div class="sv-row"><div class="sv-key">'+esc(x.name||x.criterion_id||'Item')+'</div><div class="sv-val">'+formatValue(x.value,x.unit)+'</div></div>').join('')+'</div>';
+}}
+function calculationDetail(record){{
+ const d=((record.metadata||{{}}).calculation_detail);
+ if(!d)return '';
+ let h='<div class="detail-section"><h4>Calculation detail</h4>';
+ h+='<b>Inputs</b>'+detailList(d.inputs||[]);
+ h+='<b>Criteria / Limits</b>'+detailList(d.criteria||[]);
+ if(d.case_results&&d.case_results.length)h+='<b>Case Results</b>'+detailTable(d.case_results);
+ if(d.relief_scenarios&&d.relief_scenarios.length)h+='<b>Relief Scenario Register</b>'+detailTable(d.relief_scenarios);
+ if(d.preliminary_selected_scenario)h+='<div class="detail-record"><b>Preliminary selected scenario:</b> '+esc(d.preliminary_selected_scenario)+'<div class="detail-sub">'+esc(d.selection_reason||'')+'</div></div>';
+ if(d.governing_case)h+='<div class="detail-record"><b>Governing case:</b> '+esc(d.governing_case)+'<div class="detail-sub">'+esc(d.governing_reason||'')+'</div></div>';
+ h+='<b>Outputs</b>'+detailList(d.outputs||[]);
+ if(d.method)h+='<div class="detail-record"><b>Method:</b> '+esc(d.method)+'</div>';
+ return h+'</div>';
+}}
+function buildDetailedDossier(d){{
+ let h='<div class="detail-section"><h4>Identification</h4>'+propertyRow("Object ID",d.object_id,null,null)+propertyRow("Type",d.object_type||d.category,null,null)+propertyRow("Service",d.service||"—",null,null)+'</div>';
+ h+='<div class="detail-section"><h4>Design Basis</h4>'+((d.design_basis||[]).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance)).join('')||'<div class="empty">No criteria.</div>')+'</div>';
+ Object.entries(d.records||{{}}).forEach(([domain,records])=>{{
+   h+='<div class="detail-section"><h4>'+esc(humanKey(domain))+'</h4>';
+   records.forEach(r=>{{
+     h+='<div class="detail-record"><b>'+esc(r.name)+'</b><div>'+formatValue(r.value,r.unit)+'</div><div class="detail-sub">Status: '+esc(r.status)+' · Source: '+esc(sourceLine(r.provenance))+'</div>'+calculationDetail(r)+'</div>';
+   }});
+   h+='</div>';
+ }});
+ return h;
+}}
+function openDetailModal(){{
+ if(!selectedId||!dossiers[selectedId])return;
+ const d=dossiers[selectedId];
+ document.getElementById('dialogTitle').textContent=d.tag+' — Detailed View';
+ document.getElementById('dialogSub').textContent=(d.object_type||d.category)+' · '+(d.service||'');
+ document.getElementById('dialogBody').innerHTML=buildDetailedDossier(d);
+ document.getElementById('detailDialog').showModal();
+}}
+function popOutDetail(){{
+ if(!selectedId)return;
+ window.open('/object/'+encodeURIComponent(selectedId)+'/detail','_blank','noopener');
 }}
 function openTab(tab){{activeTab=tab;render();}}
 function setInspectorMode(mode){{
