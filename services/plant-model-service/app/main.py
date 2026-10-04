@@ -22,14 +22,29 @@ from .persistence import (
     load_object_dossier,
 )
 from .thread_service import DESIGN_CASES, build_object_dossier
+from .topology_compiler import compile_engineering_topology
 from .simulation import publish_demo_simulation
 
-app = FastAPI(title="Digital BDEP Prototype", version="0.7.0")
+app = FastAPI(title="Digital BDEP Prototype", version="0.8.0")
+
+
+def _compile_case(design_case_id: str = "CASE-NORMAL"):
+    publication = publish_demo_simulation(design_case_id)
+    engine = _app_engine()
+    with Session(engine) as session:
+        facts = load_configuration_match_facts(session)
+        definitions = load_approved_configurations(session)
+    match = match_configuration(
+        publication,
+        design_basis_facts=facts,
+        definitions=definitions,
+    )
+    return compile_engineering_topology(publication, match)
 
 
 @app.get("/api/plant")
 def plant_model():
-    return demo_integrated_configuration_model().model_dump(mode="json")
+    return _compile_case().plant_model.model_dump(mode="json")
 
 
 @app.get("/", include_in_schema=False)
@@ -46,7 +61,8 @@ def _app_engine():
 
 @app.get("/engineering", response_class=HTMLResponse)
 def engineering_view():
-    model = demo_integrated_configuration_model()
+    compilation = _compile_case("CASE-NORMAL")
+    model = compilation.plant_model
     plan = build_drafter_instrumented(model)
     cleanup = build_cleanup(plan)
     engine = _app_engine()
@@ -105,6 +121,11 @@ def configuration_match(design_case_id: str):
     ).model_dump(mode="json")
 
 
+@app.get("/api/compiled-topology/{design_case_id}")
+def compiled_topology(design_case_id: str):
+    return _compile_case(design_case_id).model_dump(mode="json")
+
+
 @app.get("/configuration-match/{design_case_id}", response_class=HTMLResponse)
 def configuration_match_view(design_case_id: str):
     publication = publish_demo_simulation(design_case_id)
@@ -142,4 +163,4 @@ def db_summary():
 
 @app.get("/graph", response_class=HTMLResponse)
 def graph_view():
-    return render_graph_html(demo_integrated_configuration_model())
+    return render_graph_html(_compile_case("CASE-NORMAL").plant_model)
