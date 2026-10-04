@@ -855,7 +855,288 @@ function setInspectorMode(mode){{
  propsBtn.classList.toggle("active",mode==="properties");
  if(selectedId)renderProperties();
 }}
-function selectEntity(id){{if(!entityFor(id))return;selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);}}
+function canvasUrl(kind){{
+ const urls={{
+   plant:"/graph",
+   pid2:"/engineering-2",
+   dashboard:"/dashboard",
+   hazop:"/hazop",
+   summaries:"/summaries",
+   configuration:"/configuration-match/CASE-NORMAL",
+   compiler:"/compiler/CASE-NORMAL"
+ }};
+ return urls[kind]||null;
+}}
+function canvasLabel(kind){{
+ const labels={{
+   pid1:"P&ID 001 — Engineering Canvas",
+   plant:"Plant Model / Digital Thread",
+   pid2:"P&ID 002 — Continuation",
+   dashboard:"Project Dashboard",
+   hazop:"HAZOP Digital Thread",
+   summaries:"Generated BDEP Summaries",
+   configuration:"Configuration Match",
+   compiler:"Compiler / Plant Data"
+ }};
+ return labels[kind]||kind;
+}}
+function switchCanvas(kind,button){{
+ activeCanvas=kind;
+ const pid=document.getElementById("pidCanvasPane");
+ const embed=document.getElementById("embedPane");
+ const frame=document.getElementById("workspaceFrame");
+ document.getElementById("canvasTitle").textContent=canvasLabel(kind);
+ document.querySelectorAll("[data-canvas]").forEach(x=>x.classList.toggle("active",x.dataset.canvas===kind));
+ if(kind==="pid1"){{
+   pid.style.display="block";
+   embed.style.display="none";
+   frame.removeAttribute("src");
+ }} else {{
+   pid.style.display="none";
+   embed.style.display="block";
+   const url=canvasUrl(kind);
+   if(url&&frame.getAttribute("src")!==url)frame.setAttribute("src",url);
+ }}
+}}
+function toggleLeftSidebar(){{document.getElementById("workspaceGrid").classList.toggle("left-hidden");}}
+function toggleRightSidebar(){{document.getElementById("workspaceGrid").classList.toggle("right-hidden");}}
+function focusInspector(tab){{
+ if(activeCanvas!=="pid1")switchCanvas("pid1");
+ if(!selectedId&&entities["EQ-V101"])selectedId="EQ-V101";
+ setInspectorMode("tabs");
+ openTab(tab);
+ document.getElementById("rightSidebar").scrollTo({{top:0,behavior:"smooth"}});
+}}
+function setToolStatus(message){{document.getElementById("toolStatus").textContent=message;}}
+function stencilDragStart(ev){{
+ ev.dataTransfer.setData("text/digital-bdep-stencil",ev.currentTarget.dataset.stencil);
+ ev.dataTransfer.effectAllowed="copy";
+ setToolStatus("Dragging "+humanKey(ev.currentTarget.dataset.stencil)+" — drop on P&ID 001.");
+}}
+function canvasDragOver(ev){{
+ if(activeCanvas!=="pid1")return;
+ ev.preventDefault();
+ ev.dataTransfer.dropEffect="copy";
+}}
+function svgPointFromEvent(ev){{
+ const svg=document.getElementById("pidCanvas");
+ const pt=svg.createSVGPoint();
+ pt.x=ev.clientX;pt.y=ev.clientY;
+ const matrix=svg.getScreenCTM();
+ return matrix?pt.matrixTransform(matrix.inverse()):{{x:ev.offsetX,y:ev.offsetY}};
+}}
+function snap(v){{return autoSnap?Math.round(v/10)*10:v;}}
+function nextDraftTag(type){{
+ const prefix={{vessel:"V-NEW",pump:"P-NEW",exchanger:"E-NEW",manual_valve:"XV-NEW",control_valve:"CV-NEW",psv:"PSV-NEW",instrument:"I-NEW",boundary:"BND-NEW"}}[type]||"OBJ-NEW";
+ return prefix+"-"+draftCounter;
+}}
+function draftCategory(type){{
+ if(["vessel","pump","exchanger"].includes(type))return "equipment";
+ if(["manual_valve","control_valve","psv"].includes(type))return "valve";
+ if(type==="instrument")return "instrument";
+ if(type==="boundary")return "boundary";
+ return "draft";
+}}
+function draftMarkup(type,tag){{
+ const label='<text class="draft-label" x="0" y="34" text-anchor="middle">'+esc(tag)+'</text>';
+ if(type==="vessel")return '<rect class="draft-shape" x="-23" y="-38" width="46" height="76" rx="18"/>'+label;
+ if(type==="pump")return '<circle class="draft-shape" cx="0" cy="0" r="22"/><path class="draft-shape" d="M-18 0 C-3 -18 17 -15 22 0 C8 3 2 10 -5 16"/>'+label;
+ if(type==="exchanger")return '<rect class="draft-shape" x="-34" y="-22" width="68" height="44" rx="7"/><line class="draft-shape" x1="-26" y1="16" x2="26" y2="-16"/><line class="draft-shape" x1="-26" y1="-16" x2="26" y2="16"/>'+label;
+ if(type==="manual_valve")return '<path class="draft-shape" d="M-18 -10 L0 0 L-18 10 Z M18 -10 L0 0 L18 10 Z"/>'+label;
+ if(type==="control_valve")return '<path class="draft-shape" d="M-18 -10 L0 0 L-18 10 Z M18 -10 L0 0 L18 10 Z"/><line class="draft-shape" x1="0" y1="0" x2="0" y2="-22"/><path class="draft-shape" d="M-11 -22 Q0 -37 11 -22"/><line class="draft-shape" x1="-11" y1="-22" x2="11" y2="-22"/>'+label;
+ if(type==="psv")return '<path class="draft-shape" d="M-13 8 L13 8 L0 -14 Z"/><line class="draft-shape" x1="0" y1="-14" x2="0" y2="-27"/><line class="draft-shape" x1="-8" y1="-27" x2="8" y2="-27"/>'+label;
+ if(type==="instrument")return '<circle class="draft-shape" cx="0" cy="0" r="14"/><text class="draft-label" x="0" y="3" text-anchor="middle">I</text>'+label;
+ if(type==="boundary")return '<path class="draft-shape" d="M-18 -7 H8 L18 0 L8 7 H-18 Z"/>'+label;
+ return '<circle class="draft-shape" cx="0" cy="0" r="12"/>'+label;
+}}
+function canvasDrop(ev){{
+ if(activeCanvas!=="pid1")return;
+ ev.preventDefault();
+ const type=ev.dataTransfer.getData("text/digital-bdep-stencil");
+ if(!type)return;
+ const p=svgPointFromEvent(ev);
+ createDraftObject(type,snap(Math.max(55,Math.min(1060,p.x))),snap(Math.max(55,Math.min(560,p.y))));
+}}
+function createDraftObject(type,x,y){{
+ draftCounter+=1;
+ const id="DRAFT-OBJ-"+draftCounter;
+ const tag=nextDraftTag(type);
+ const g=document.createElementNS(svgNS,"g");
+ g.setAttribute("id","svg-"+id);
+ g.setAttribute("class","draft-object selectable");
+ g.setAttribute("data-object-id",id);
+ g.setAttribute("transform","translate("+x+" "+y+")");
+ g.setAttribute("onmousedown","draftMoveStart(event,'"+id+"')");
+ g.setAttribute("onclick","selectEntity('"+id+"')");
+ g.innerHTML=draftMarkup(type,tag);
+ document.getElementById("draftLayer").appendChild(g);
+ const obj={{id,type,tag,x,y,category:draftCategory(type),object_type:"provisional_"+type,service:"Provisional sketch object",status:"DRAFT"}};
+ draftObjects.push(obj);
+ draftActions.push({{action:"add_object",id}});
+ entities[id]={{id,tag,category:obj.category,object_type:obj.object_type,service:obj.service,properties:{{draft:true}},children:[],relationships:[],connected_lines:[],status:"DRAFT"}};
+ selectEntity(id);
+ setToolStatus(tag+" added as a provisional draft object. Drag to reposition or connect it.");
+}}
+function draftMoveStart(ev,id){{if(ev.button!==0)return;movingDraft=id;ev.stopPropagation();}}
+function draftMove(ev){{
+ if(!movingDraft)return;
+ ev.preventDefault();
+ const p=svgPointFromEvent(ev);
+ const obj=draftObjects.find(x=>x.id===movingDraft);
+ if(!obj)return;
+ obj.x=snap(Math.max(55,Math.min(1060,p.x)));
+ obj.y=snap(Math.max(55,Math.min(560,p.y)));
+ document.getElementById("svg-"+obj.id).setAttribute("transform","translate("+obj.x+" "+obj.y+")");
+ redrawDraftConnections();
+}}
+function draftMoveEnd(){{movingDraft=null;}}
+function entityElement(id){{
+ const safe=(window.CSS&&CSS.escape)?CSS.escape(id):id.replace(/"/g,"");
+ return document.querySelector('[data-object-id="'+safe+'"]')||document.querySelector('[data-route-entity-id="'+safe+'"]');
+}}
+function entityCenter(id){{
+ const el=entityElement(id);
+ if(!el||typeof el.getBBox!=="function")return null;
+ if(el.classList&&el.classList.contains("draft-object")){{
+   const obj=draftObjects.find(x=>x.id===id);
+   return obj?{{x:obj.x,y:obj.y}}:null;
+ }}
+ const b=el.getBBox();
+ return {{x:b.x+b.width/2,y:b.y+b.height/2}};
+}}
+function connectorKindSuggestion(sourceId,targetId){{
+ const a=entityFor(sourceId)||{{}},b=entityFor(targetId)||{{}};
+ const inst=a.category==="instrument"||b.category==="instrument";
+ const control=(a.object_type||"").includes("control")||(b.object_type||"").includes("control");
+ return (inst||control)?"signal":"process";
+}}
+function toggleConnectorMode(){{
+ connectorMode=!connectorMode;
+ connectorSource=null;
+ document.getElementById("connectorBtn").classList.toggle("active",connectorMode);
+ setToolStatus(connectorMode?"Guided Connector ON — select source entity, then target entity.":"Guided Connector OFF.");
+}}
+function guidedSelect(id){{
+ if(!connectorMode)return false;
+ if(!connectorSource){{
+   connectorSource=id;
+   setToolStatus("Connector source: "+(entityFor(id)?.tag||id)+". Now select the target.");
+   return true;
+ }}
+ if(connectorSource===id){{setToolStatus("Target must be different from source.");return true;}}
+ createDraftConnection(connectorSource,id);
+ connectorSource=null;
+ connectorMode=false;
+ document.getElementById("connectorBtn").classList.remove("active");
+ return true;
+}}
+function createDraftConnection(sourceId,targetId){{
+ const s=entityCenter(sourceId),t=entityCenter(targetId);
+ if(!s||!t){{setToolStatus("Could not resolve visible anchors for the requested connection.");return;}}
+ draftConnectionCounter+=1;
+ const id="DRAFT-CONN-"+draftConnectionCounter;
+ const kind=connectorKindSuggestion(sourceId,targetId);
+ const conn={{id,source_id:sourceId,target_id:targetId,kind,status:"DRAFT"}};
+ draftConnections.push(conn);
+ draftActions.push({{action:"add_connection",id}});
+ entities[id]={{id,tag:id,category:"connection",object_type:"provisional_"+kind+"_connection",service:"Provisional guided connector",from:{{id:sourceId,label:entityFor(sourceId)?.tag||sourceId}},to:{{id:targetId,label:entityFor(targetId)?.tag||targetId}},through:[],path:[],connected_lines:[],status:"DRAFT"}};
+ redrawDraftConnections();
+ setToolStatus("Guided connector created. Suggested type: "+kind.toUpperCase()+". Auto-correct can snap and orthogonalize it.");
+ selectEntity(id);
+}}
+function redrawDraftConnections(){{
+ const layer=document.getElementById("draftConnectorLayer");
+ layer.innerHTML="";
+ draftConnections.forEach(conn=>{{
+   const s=entityCenter(conn.source_id),t=entityCenter(conn.target_id);
+   if(!s||!t)return;
+   const mid=snap((s.x+t.x)/2);
+   const poly=document.createElementNS(svgNS,"polyline");
+   poly.setAttribute("class","draft-connector "+(conn.kind==="signal"?"signal-kind":""));
+   poly.setAttribute("points",s.x+","+s.y+" "+mid+","+s.y+" "+mid+","+t.y+" "+t.x+","+t.y);
+   poly.setAttribute("data-route-entity-id",conn.id);
+   poly.setAttribute("onclick","selectEntity('"+conn.id+"')");
+   layer.appendChild(poly);
+ }});
+}}
+function autoCorrectDrafts(){{
+ const occupied=[];
+ draftObjects.forEach(obj=>{{
+   obj.x=snap(Math.max(60,Math.min(1050,obj.x)));
+   obj.y=snap(Math.max(60,Math.min(555,obj.y)));
+   let guard=0;
+   while(occupied.some(p=>Math.abs(p.x-obj.x)<55&&Math.abs(p.y-obj.y)<45)&&guard<8){{obj.y=snap(Math.min(555,obj.y+60));guard+=1;}}
+   occupied.push({{x:obj.x,y:obj.y}});
+   const el=document.getElementById("svg-"+obj.id);
+   if(el)el.setAttribute("transform","translate("+obj.x+" "+obj.y+")");
+ }});
+ redrawDraftConnections();
+ setToolStatus("Auto-correct complete: grid snap, drawing-boundary clamp, basic overlap separation and orthogonal connector routing applied.");
+}}
+function validateDrafts(){{
+ const issues=[];
+ draftObjects.forEach(obj=>{{
+   const connected=draftConnections.some(c=>c.source_id===obj.id||c.target_id===obj.id);
+   if(!connected)issues.push(obj.tag+" is not connected.");
+   if(obj.x<50||obj.x>1070||obj.y<50||obj.y>570)issues.push(obj.tag+" is outside the usable drawing zone.");
+ }});
+ for(let i=0;i<draftObjects.length;i++)for(let j=i+1;j<draftObjects.length;j++){{
+   const a=draftObjects[i],b=draftObjects[j];
+   if(Math.abs(a.x-b.x)<45&&Math.abs(a.y-b.y)<35)issues.push(a.tag+" overlaps "+b.tag+".");
+ }}
+ setToolStatus(issues.length?("Draft validation: "+issues.length+" issue(s) — "+issues.slice(0,4).join(" | ")):("Draft validation GREEN — "+draftObjects.length+" provisional object(s), "+draftConnections.length+" connector(s)."));
+ return issues;
+}}
+function removeDraftObject(id){{
+ const idx=draftObjects.findIndex(x=>x.id===id);
+ if(idx>=0)draftObjects.splice(idx,1);
+ document.getElementById("svg-"+id)?.remove();
+ delete entities[id];
+ for(let i=draftConnections.length-1;i>=0;i--)if(draftConnections[i].source_id===id||draftConnections[i].target_id===id){{delete entities[draftConnections[i].id];draftConnections.splice(i,1);}}
+ redrawDraftConnections();
+}}
+function removeDraftConnection(id){{
+ const idx=draftConnections.findIndex(x=>x.id===id);
+ if(idx>=0)draftConnections.splice(idx,1);
+ delete entities[id];
+ redrawDraftConnections();
+}}
+function undoDraft(){{
+ const action=draftActions.pop();
+ if(!action){{setToolStatus("Nothing to undo.");return;}}
+ if(action.action==="add_object")removeDraftObject(action.id);else if(action.action==="add_connection")removeDraftConnection(action.id);
+ if(!entityFor(selectedId)&&entities["EQ-V101"])selectEntity("EQ-V101");
+ setToolStatus("Undid "+humanKey(action.action)+".");
+}}
+function clearDrafts(){{
+ [...draftObjects].forEach(x=>delete entities[x.id]);
+ [...draftConnections].forEach(x=>delete entities[x.id]);
+ draftObjects.length=0;draftConnections.length=0;draftActions.length=0;
+ document.getElementById("draftLayer").innerHTML="";
+ document.getElementById("draftConnectorLayer").innerHTML="";
+ if(entities["EQ-V101"])selectEntity("EQ-V101");
+ setToolStatus("All provisional sketch objects and connectors cleared. Published engineering model unchanged.");
+}}
+function prepareChangeSet(){{
+ const issues=validateDrafts();
+ const payload={{
+   status:"PROPOSED_NOT_APPLIED",
+   drawing_id:"PID-DEMO-001",
+   base_revision:"A",
+   objects:draftObjects.map(x=>({{id:x.id,provisional_tag:x.tag,type:x.type,category:x.category,position:{{x:x.x,y:x.y}}}})),
+   connections:draftConnections.map(x=>({{id:x.id,source:x.source_id,target:x.target_id,suggested_kind:x.kind}})),
+   validation:{{issue_count:issues.length,issues}},
+   promotion_rule:"Requires explicit controlled engineering change/publish workflow before semantic Plant Model write-back"
+ }};
+ document.getElementById("changeJson").textContent=JSON.stringify(payload,null,2);
+ document.getElementById("changeDialog").showModal();
+}}
+function selectEntity(id){{
+ if(!entityFor(id))return;
+ const usedByConnector=guidedSelect(id);
+ selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);
+ if(usedByConnector)return;
+}}
 function selectObject(id){{selectEntity(id);}}
 renderPublishBar();
 if(entities["EQ-V101"])selectEntity("EQ-V101");
