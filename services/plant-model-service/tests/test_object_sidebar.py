@@ -299,3 +299,50 @@ def test_workspace_supports_drag_drop_stencils_guided_connectors_and_autocorrect
         "prepareChangeSet",
     ]:
         assert f"function {function_name}" in html
+
+
+
+def test_left_sidebar_is_category_model_browser_not_cluttered_menu():
+    html = _render_db_view()
+    for label in [
+        "Engineering Model Browser",
+        "Equipment",
+        "Instruments",
+        "Streams",
+        "Piping / Lines",
+        "Valves",
+        "Control Loops / Signals",
+        "Instrument Connections",
+        "Boundaries / Off-page",
+        "Drawings / Views",
+    ]:
+        assert label in html
+
+    assert 'id="modelBrowser"' in html
+    assert 'id="modelSearch"' in html
+    assert "function renderModelBrowser" in html
+    assert "function selectFromBrowser" in html
+
+
+def test_browser_child_selection_focuses_canvas_and_populates_properties():
+    html = _render_db_view()
+    assert "function focusCanvasEntity" in html
+    assert "focusCanvasEntity(id)" in html
+    assert 'setInspectorMode("properties")' in html
+    assert "Focused: " in html
+    assert "Fit Drawing" in html
+    assert 'svg.setAttribute("viewBox","0 0 1120 690")' in html
+
+
+def test_drawing_selection_has_no_blue_round_or_blue_route_highlight():
+    html = _render_db_view()
+    assert "rgba(37,99,235,.16)" not in html
+    assert "stroke:#1d4ed8" not in html
+    assert "route-hit:hover{{stroke:rgba(15,23,42,.08)}}" in html
+
+
+def test_drawing_quality_is_a_right_inspector_tab_not_bottom_information_panel():
+    html = _render_db_view()
+    assert '["quality","Drawing / QA"]' in html
+    assert 'id="drawingQualityTemplate"' in html
+    assert '<div class="section">Drawing quality</div>' not in html
