@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html
 
-from .hazop import build_demo_hazop
+from .hazop import build_demo_hazop, hazop_rows_for_entity
 
 
 def _entity_links(items):
@@ -77,6 +77,9 @@ def render_hazop_html() -> str:
             """
         )
 
+    impact_rows = hazop_rows_for_entity("LINE-1102")
+    impact_ids = ", ".join(row["row_id"] for row in impact_rows)
+
     return f"""<!doctype html>
 <html>
 <head>
@@ -106,6 +109,7 @@ table{{border-collapse:collapse;width:100%;font-size:8px}} th,td{{border:1px sol
 <h1>{html.escape(data["title"])}</h1>
 <div class="kpis"><div class="kpi"><b>{len(data["nodes"])}</b>HAZOP nodes</div><div class="kpi"><b>{total_rows}</b>pre-populated deviations</div><div class="kpi"><b>Live</b>entity/calculation links</div></div>
 <div class="note">{html.escape(data["governance_note"])}</div>
+<div class="note"><b>Change-impact demonstration:</b> if suction line <a class="entity" href="/workspace/LINE-1102">LINE-1102 / 8&quot;-HC-1102-CS150</a> changes, the Digital Thread immediately identifies HAZOP rows <b>{html.escape(impact_ids)}</b> as requiring review. The system does not rewrite the HAZOP decision; it tells the team exactly which rows are affected.</div>
 </section>
 {"".join(node_html)}
 </main>
