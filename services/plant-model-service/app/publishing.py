@@ -1387,6 +1387,90 @@ def publish_instrumentation(session: Session) -> PublicationResult:
                     {"name": "FT upper range", "value": ft_range_hi, "unit": "t/h"},
                 ],
                 method="Deterministic preliminary liquid control-valve sizing using published minimum-flow duty and Design Basis pressure drop.",
+                trace=_trace(
+                    trace_id="TRACE-CALC-FCV101-CV",
+                    calculation_type="liquid_control_valve_preliminary_cv",
+                    input_sources=[
+                        {"source": "CALC-P101-001", "field": "pump_rated_flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PUMP-MIN-FLOW-FRACTION", "value": round(min_flow_fraction * 100.0, 3), "unit": "%"},
+                        {"source": "SIM-002 / stream 1102", "field": "liquid_density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-CV-SIZING-DP", "value": cv_dp, "unit": "bar"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-CV-SIZING-MARGIN", "value": round(cv_margin * 100.0, 3), "unit": "%"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Calculate minimum-flow protection duty",
+                            "equation": "W_min = W_pump,rated × minimum_flow_fraction",
+                            "substitution": f'{n["pump_rated_flow_tph"]:.3f} × {min_flow_fraction:.4f}',
+                            "result": round(min_flow_tph, 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Convert minimum-flow mass rate to volumetric flow",
+                            "equation": "Q = W_min × 1000 / rho",
+                            "substitution": f'{min_flow_tph:.3f} × 1000 / {n["liquid_density_kgm3"]:.3f}',
+                            "result": round(q_m3h, 3),
+                            "unit": "m3/h",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Calculate liquid specific gravity",
+                            "equation": "SG = rho / 1000",
+                            "substitution": f'{n["liquid_density_kgm3"]:.3f} / 1000',
+                            "result": round(sg, 4),
+                            "unit": None,
+                        },
+                        {
+                            "step": 4,
+                            "title": "Calculate metric flow coefficient Kv",
+                            "equation": "Kv = Q × sqrt(SG / DeltaP_bar)",
+                            "substitution": f'{q_m3h:.3f} × sqrt({sg:.4f} / {cv_dp:.3f})',
+                            "result": round(kv, 3),
+                            "unit": "Kv",
+                        },
+                        {
+                            "step": 5,
+                            "title": "Convert Kv to Cv",
+                            "equation": "Cv = 1.156 × Kv",
+                            "substitution": f'1.156 × {kv:.3f}',
+                            "result": round(raw_cv, 3),
+                            "unit": "Cv",
+                        },
+                        {
+                            "step": 6,
+                            "title": "Apply Cv sizing margin",
+                            "equation": "Cv_design = Cv_raw × (1 + margin/100)",
+                            "substitution": f'{raw_cv:.3f} × (1 + {cv_margin * 100.0:.3f}/100)',
+                            "result": round(design_cv, 3),
+                            "unit": "Cv",
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Sizing pressure drop positive", "actual": cv_dp, "criterion": "> 0 bar", "result": "PASS"},
+                        {"check": "Liquid density positive", "actual": round(n["liquid_density_kgm3"], 3), "criterion": "> 0 kg/m3", "result": "PASS"},
+                        {"check": "Design Cv >= raw Cv", "actual": round(design_cv, 3), "criterion": f'>= {raw_cv:.3f}', "result": "PASS"},
+                        {"check": "Normal opening target", "actual": "Not evaluated", "criterion": f'{normal_opening:g} % target', "result": "PENDING TRIM/CHARACTERISTIC"},
+                        {"check": "Maximum opening limit", "actual": "Not evaluated", "criterion": f'<= {max_opening:g} %', "result": "PENDING TRIM/CHARACTERISTIC"},
+                    ],
+                    assumptions=[
+                        "Single-phase incompressible liquid service is assumed for this preliminary Cv calculation.",
+                        "Design Basis pressure drop is used directly as the sizing differential pressure.",
+                        "Published maximum-case liquid density is used as the preliminary sizing density.",
+                    ],
+                    limitations=[
+                        "No selected valve size, trim, inherent characteristic, installed characteristic or opening calculation is available yet.",
+                        "No cavitation, flashing, choked-flow, noise, velocity, rangeability, actuator thrust or valve-body pressure-class check is included yet.",
+                        "Final control-valve selection requires the qualified valve-sizing service and vendor/trim data.",
+                    ],
+                    downstream_consumers=[
+                        "FCV-101 instrument datasheet",
+                        "Minimum-flow DCS loop",
+                        "FCV-101 cost estimate",
+                        "Vendor control-valve requisition",
+                    ],
+                ),
             ),
         )
     )
@@ -1418,6 +1502,56 @@ def publish_instrumentation(session: Session) -> PublicationResult:
                     {"name": "URV", "value": ft_range_hi, "unit": "t/h"},
                 ],
                 method="Deterministic instrument range selection.",
+                trace=_trace(
+                    trace_id="TRACE-INST-FT101-RANGE",
+                    calculation_type="instrument_range_selection",
+                    input_sources=[
+                        {"source": "CALC-FCV101-001", "field": "minimum_flow_design_rate", "value": round(min_flow_tph, 3), "unit": "t/h"},
+                        {"source": "Instrumentation sizing rule", "field": "range_factor", "value": 1.25},
+                        {"source": "Instrumentation sizing rule", "field": "rounding_increment", "value": 5.0, "unit": "t/h"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Apply measurement range factor",
+                            "equation": "URV_raw = W_design × range_factor",
+                            "substitution": f'{min_flow_tph:.3f} × 1.25',
+                            "result": round(min_flow_tph * 1.25, 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Round upward to instrument range increment",
+                            "equation": "URV = ceil(URV_raw / 5) × 5",
+                            "substitution": f'ceil({min_flow_tph * 1.25:.3f} / 5) × 5',
+                            "result": ft_range_hi,
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Assign preliminary calibrated range",
+                            "equation": "Range = LRV to URV",
+                            "substitution": f'0 to {ft_range_hi:g}',
+                            "result": f'0-{ft_range_hi:g}',
+                            "unit": "t/h",
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "URV covers minimum-flow design rate", "actual": ft_range_hi, "criterion": f'>= {min_flow_tph:.3f} t/h', "result": "PASS"},
+                        {"check": "URV includes 25% preliminary range margin", "actual": ft_range_hi, "criterion": f'>= {min_flow_tph * 1.25:.3f} t/h before rounding', "result": "PASS"},
+                    ],
+                    assumptions=[
+                        "Zero-based mass-flow range is used for the MVP minimum-flow measurement.",
+                    ],
+                    limitations=[
+                        "Final transmitter technology, primary element, turndown, accuracy, density compensation and alarm ranges are not yet selected.",
+                    ],
+                    downstream_consumers=[
+                        "FT-101 instrument datasheet",
+                        "FIC-101 DCS configuration basis",
+                        "Vendor instrument requisition",
+                    ],
+                ),
             ),
         )
     )
