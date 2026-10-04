@@ -26,7 +26,7 @@ def test_clean_view_contains_title_block_and_quality_report():
     plan = build_drafter_instrumented(model)
     cleanup = build_cleanup(plan)
     html = render_clean_pid_html(model, plan, cleanup)
-    assert "DIGITAL BDEP - P&amp;ID" in html
+    assert "DIGITAL BDEP - P&ID" in html
     assert "Drawing quality" in html
     assert "TO RELIEF HEADER" in html
     assert "L-P101-DIS" in html
