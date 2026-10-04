@@ -43,6 +43,100 @@ def _kv(value: Any) -> str:
     return f'<table><tbody>{rows}</tbody></table>'
 
 
+def _trace_html(trace: dict[str, Any] | None) -> str:
+    if not isinstance(trace, dict):
+        return ""
+
+    parts = ['<section class="trace"><h2>Full Calculation Trace</h2>']
+    parts.append(
+        '<div class="tracehead">'
+        f'<div><b>Trace ID:</b> {html.escape(_fmt(trace.get("trace_id")))}</div>'
+        f'<div><b>Type:</b> {html.escape(_fmt(trace.get("calculation_type")))}</div>'
+        f'<div><b>Service version:</b> {html.escape(_fmt(trace.get("service_version")))}</div>'
+        f'<div><b>Qualification:</b> {html.escape(_fmt(trace.get("qualification")))}</div>'
+        '</div>'
+    )
+
+    sources = trace.get("input_sources") or []
+    if sources:
+        keys = []
+        for row in sources:
+            for key in row:
+                if key not in keys:
+                    keys.append(key)
+        head = "".join(f"<th>{html.escape(key.replace('_',' ').title())}</th>" for key in keys)
+        body = "".join(
+            "<tr>" + "".join(f"<td>{html.escape(_fmt(row.get(key)))}</td>" for key in keys) + "</tr>"
+            for row in sources
+        )
+        parts.append(f'<h3>Input Traceability</h3><div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>')
+
+    steps = trace.get("steps") or []
+    if steps:
+        parts.append("<h3>Equation / Substitution Steps</h3>")
+        for step in steps:
+            note = (
+                f'<div class="muted"><b>Note:</b> {html.escape(_fmt(step.get("note")))}</div>'
+                if step.get("note")
+                else ""
+            )
+            unit = f' {html.escape(_fmt(step.get("unit")))}' if step.get("unit") else ""
+            parts.append(
+                '<div class="step">'
+                f'<div class="stepno">Step {html.escape(_fmt(step.get("step")))}</div>'
+                f'<b>{html.escape(_fmt(step.get("title")))}</b>'
+                f'<div><b>Equation:</b> <code>{html.escape(_fmt(step.get("equation")))}</code></div>'
+                f'<div><b>Substitution:</b> <code>{html.escape(_fmt(step.get("substitution")))}</code></div>'
+                f'<div><b>Result:</b> {html.escape(_fmt(step.get("result")))}{unit}</div>'
+                f'{note}</div>'
+            )
+
+    selections = trace.get("selection_checks") or []
+    if selections:
+        keys = []
+        for row in selections:
+            for key in row:
+                if key not in keys:
+                    keys.append(key)
+        head = "".join(f"<th>{html.escape(key.replace('_',' ').title())}</th>" for key in keys)
+        body = "".join(
+            "<tr>" + "".join(f"<td>{html.escape(_fmt(row.get(key)))}</td>" for key in keys) + "</tr>"
+            for row in selections
+        )
+        parts.append(f'<h3>Candidate / Selection Checks</h3><div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>')
+
+    checks = trace.get("validation_checks") or []
+    if checks:
+        body = "".join(
+            f'<tr><td>{html.escape(_fmt(row.get("check")))}</td>'
+            f'<td>{html.escape(_fmt(row.get("actual")))}</td>'
+            f'<td>{html.escape(_fmt(row.get("criterion")))}</td>'
+            f'<td>{html.escape(_fmt(row.get("result")))}</td></tr>'
+            for row in checks
+        )
+        parts.append(
+            '<h3>Validation Checks</h3><table><thead><tr>'
+            '<th>Check</th><th>Actual</th><th>Criterion</th><th>Result</th>'
+            '</tr></thead><tbody>' + body + '</tbody></table>'
+        )
+
+    for title, key in [
+        ("Assumptions", "assumptions"),
+        ("Limitations / Qualification Gaps", "limitations"),
+        ("Downstream Consumers", "downstream_consumers"),
+    ]:
+        rows = trace.get(key) or []
+        if rows:
+            parts.append(
+                f'<h3>{html.escape(title)}</h3><ul>'
+                + "".join(f"<li>{html.escape(_fmt(item))}</li>" for item in rows)
+                + "</ul>"
+            )
+
+    parts.append("</section>")
+    return "".join(parts)
+
+
 def _calc(entity: dict[str, Any]) -> str:
     metadata = entity.get("record_metadata") or {}
     detail = metadata.get("calculation_detail") if isinstance(metadata, dict) else None
@@ -77,6 +171,10 @@ def _calc(entity: dict[str, Any]) -> str:
             for row in cases
         )
         sections.append(f'<section><h3>Case Results</h3><div class="scroll"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>')
+
+    trace_html = _trace_html(detail.get("trace"))
+    if trace_html:
+        sections.append(trace_html)
 
     governing = detail.get("governing_case")
     reason = detail.get("governing_reason")
@@ -115,7 +213,9 @@ table{{border-collapse:collapse;width:100%;font-size:10px}} th,td{{border:1px so
 .path{{display:flex;flex-wrap:wrap;align-items:center;gap:5px}} .node{{border:1px solid #94a3b8;border-radius:999px;padding:6px 8px;font-size:10px;background:#fff}}
 .node small{{display:block;color:#64748b;font-size:8px}} .arrow{{color:#64748b}}
 .notice{{background:#fffbeb;border:1px solid #fde68a;padding:9px;font-size:10px;line-height:1.5}} .method{{background:#f8fafc;border:1px solid #e5e7eb;padding:8px;font-size:10px}}
-h2{{font-size:14px;margin:0 0 9px}} h3{{font-size:11px;margin:0 0 7px}} .scroll{{overflow:auto}} .empty{{font-size:10px;color:#64748b}}
+.trace{{border:2px solid #bfdbfe;background:#f8fbff}} .tracehead{{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px;font-size:9px}}
+.step{{background:#fff;border-left:3px solid #60a5fa;padding:8px;margin:7px 0;font-size:10px;line-height:1.5}} .stepno{{font-size:8px;color:#64748b;text-transform:uppercase}} code{{white-space:normal;font-size:9px}}
+h2{{font-size:14px;margin:0 0 9px}} h3{{font-size:11px;margin:10px 0 7px}} .scroll{{overflow:auto}} .empty{{font-size:10px;color:#64748b}}
 @media(max-width:800px){{.grid{{grid-template-columns:1fr}}}}
 </style>
 </head>
