@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .configurations import demo_integrated_configuration_model
@@ -360,6 +360,31 @@ def ensure_demo_seeded(engine) -> None:
     from .db_schema import Base
 
     Base.metadata.create_all(engine)
+
+    # Backward-compatible upgrade for the local demo SQLite database. Production
+    # PostgreSQL deployments use Alembic migrations; this only prevents an older
+    # checked-out demo DB from breaking when stream_number was introduced.
+    inspector = inspect(engine)
+    if "streams" in inspector.get_table_names():
+        columns = {column["name"] for column in inspector.get_columns("streams")}
+        if "stream_number" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE streams ADD COLUMN stream_number VARCHAR(20)"))
+        with engine.begin() as connection:
+            for simulator_id, stream_number in [
+                ("S-100", "1100"),
+                ("S-101", "1101"),
+                ("S-102", "1102"),
+                ("S-103", "1103"),
+            ]:
+                connection.execute(
+                    text(
+                        "UPDATE streams SET stream_number=:stream_number "
+                        "WHERE simulation_stream_id=:simulator_id "
+                        "AND (stream_number IS NULL OR stream_number='')"
+                    ),
+                    {"stream_number": stream_number, "simulator_id": simulator_id},
+                )
     with Session(engine) as session:
         existing = session.scalar(select(ProjectRow.id).limit(1))
     if existing is None:
