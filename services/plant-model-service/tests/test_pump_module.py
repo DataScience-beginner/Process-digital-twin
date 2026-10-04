@@ -20,11 +20,11 @@ def test_minimum_flow_loop_has_process_and_signal_paths():
     assert {"S-FLOW-01", "S-FLOW-02"} <= signal
 
 
-def test_pressure_indicators_associate_to_pump_ports():
+def test_pressure_indicators_associate_to_pump_nozzle_nodes():
     model = demo_pump_installation_model()
-    links = {(a.subject_id, a.target_id, a.target_port) for a in model.associations}
-    assert ("INS-PI101S", "EQ-P101", "SUCTION") in links
-    assert ("INS-PI101D", "EQ-P101", "DISCHARGE") in links
+    links = {(a.subject_id, a.target_id) for a in model.associations}
+    assert ("INS-PI101S", "NOZ-P101-SUC") in links
+    assert ("INS-PI101D", "NOZ-P101-DIS") in links
 
 
 def test_invalid_signal_port_is_rejected():
