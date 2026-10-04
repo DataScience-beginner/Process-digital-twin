@@ -63,13 +63,15 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 
 <!-- Separator -->
 <path class="sym" d="M184 233 Q220 207 256 233 L256 367 Q220 393 184 367 Z"/>
+<line class="sym" x1="220" y1="393" x2="220" y2="405"/>
 <text x="220" y="304" text-anchor="middle" class="tag">V-101</text>
 
 <!-- LCV -->
 <g data-semantic-object-id="VLV-LCV101">
 <path class="sym" d="M376 419 L395 430 L376 441 Z M414 419 L395 430 L414 441 Z"/>
-<line class="sym" x1="395" y1="419" x2="395" y2="407"/>
-<path class="sym" d="M383 407 Q395 395 407 407 Z"/>
+<line class="sym" x1="395" y1="430" x2="395" y2="407"/>
+<path class="sym" d="M383 407 Q395 390 407 407"/>
+<line class="sym" x1="383" y1="407" x2="407" y2="407"/>
 <text x="395" y="458" text-anchor="middle" class="txt">LCV-101</text>
 </g>
 
@@ -109,8 +111,9 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <!-- recycle FCV -->
 <g data-semantic-object-id="VLV-FCV101">
 <path class="sym" d="M501 244 L520 255 L501 266 Z M539 244 L520 255 L539 266 Z"/>
-<line class="sym" x1="520" y1="244" x2="520" y2="232"/>
-<path class="sym" d="M508 232 Q520 220 532 232 Z"/>
+<line class="sym" x1="520" y1="255" x2="520" y2="232"/>
+<path class="sym" d="M508 232 Q520 215 532 232"/>
+<line class="sym" x1="508" y1="232" x2="532" y2="232"/>
 <text x="520" y="284" text-anchor="middle" class="txt">FCV-101</text>
 </g>
 
