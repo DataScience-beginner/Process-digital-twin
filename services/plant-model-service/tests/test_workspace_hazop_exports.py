@@ -55,7 +55,7 @@ def test_psv_demo_selects_standard_orifice_with_full_trace_and_safety_gate():
     relief = _record(dossiers["VLV-PSV101"], "RELIEF-PSV101-BASIS")
 
     assert relief.value["selected_orifice"] == "Q"
-    assert relief.value["required_orifice_area_in2"] > 10.0
+    assert 6.38 < relief.value["required_orifice_area_in2"] < 11.05
     assert relief.value["selected_orifice_area_in2"] == 11.05
     assert relief.value["selected_capacity_tph"] > relief.value["relief_load_tph"]
     assert relief.value["final_orifice_area"].startswith("TBD")
