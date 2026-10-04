@@ -327,3 +327,56 @@ def workspace_pdf_lines(entity: dict[str, Any], dossier) -> list[str]:
     if entity.get("record_value"):
         lines.extend(["", "LINE / CONNECTION ENGINEERING", str(entity.get("record_value"))])
     return lines
+
+
+
+def summary_pdf_lines(summaries: dict[str, list[dict[str, Any]]]) -> list[str]:
+    lines = [
+        "Digital BDEP - Generated BDEP Summaries",
+        "Project: BDEP-DEMO-004",
+        "",
+    ]
+    ordered = [
+        ("equipment_list", "EQUIPMENT LIST"),
+        ("stream_list", "STREAM LIST"),
+        ("line_list", "LINE LIST"),
+        ("valve_list", "VALVE LIST"),
+        ("control_valve_list", "CONTROL VALVE LIST"),
+        ("instrument_index", "INSTRUMENT INDEX"),
+        ("control_loop_list", "CONTROL LOOP LIST"),
+        ("psv_relief_summary", "PSV / RELIEF SUMMARY"),
+        ("calculation_register", "CALCULATION REGISTER"),
+        ("technical_summary", "TECHNICAL / MECHANICAL SUMMARY"),
+        ("cost_summary", "COST SUMMARY"),
+        ("publication_summary", "PUBLICATION / COMPLETION SUMMARY"),
+        ("drawing_index", "P&ID / DRAWING INDEX"),
+        ("continuation_register", "CROSS-SHEET CONTINUATION REGISTER"),
+    ]
+    for key, title in ordered:
+        lines.extend(["", title])
+        rows = summaries.get(key) or []
+        if not rows:
+            lines.append("No rows.")
+            continue
+        for index, row in enumerate(rows, start=1):
+            parts = []
+            for field, value in row.items():
+                if isinstance(value, (dict, list, tuple)):
+                    shown = str(value)
+                else:
+                    shown = "" if value is None else str(value)
+                parts.append(f"{field}={shown}")
+            lines.append(f"{index}. " + " | ".join(parts))
+    return lines
+
+
+def extract_svg_document(html_text: str) -> bytes:
+    start = html_text.find("<svg")
+    end = html_text.find("</svg>", start)
+    if start < 0 or end < 0:
+        raise ValueError("Engineering HTML contains no SVG document.")
+    end += len("</svg>")
+    svg = html_text[start:end]
+    if "xmlns=" not in svg[:300]:
+        svg = svg.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"', 1)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n' + svg).encode("utf-8")
