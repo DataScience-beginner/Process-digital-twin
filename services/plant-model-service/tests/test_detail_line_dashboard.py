@@ -99,7 +99,7 @@ def test_psv_detail_contains_scenario_register_and_selection_rationale():
     detail = relief.metadata["calculation_detail"]
     assert len(detail["relief_scenarios"]) >= 4
     assert detail["preliminary_selected_scenario"] == "Blocked vapor outlet"
-    assert "not declared the final governing relief case" in detail["selection_reason"]
+    assert "not declared the final project governing relief case" in detail["selection_reason"]
     assert relief.metadata["qualified_service_required"] is True
 
 
