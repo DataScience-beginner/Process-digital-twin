@@ -158,7 +158,7 @@ Goal: every selected engineering item can open a detailed calculation/datasheet 
 - [x] Add "Open Detail / Pop-out" action for selected P&ID objects
 - [x] Detailed object header: tag, type, service, revision, maturity/status
 - [x] Show Design Basis criteria linked to the selected object
-- [ ] Calculation detail sections:
+- [x] Calculation detail sections:
   - [x] inputs
   - [x] criteria / limits
   - [x] calculation method / service
@@ -194,7 +194,7 @@ Goal: every selected engineering item can open a detailed calculation/datasheet 
 
 ## MVP 0.9D — Project / Equipment Dashboard
 - [x] Publication-stage completion summary
-- [x] Equipment / valve / instrument status matrix
+- [x] Primary-equipment status matrix with valves/instruments rolled up as child discipline objects
 - [x] Discipline completion per object
 - [x] Cost per major equipment / valve
 - [x] Total section/project demo estimate
@@ -230,4 +230,4 @@ Goal: every selected engineering item can open a detailed calculation/datasheet 
 4. Every displayed value has provenance.
 5. Engineering View remains conventional; Graph View exposes the digital thread.
 6. No AI-generated safety-critical calculations.
-7. Unknown configurations stop for engineering review instead of being invented.
+7. Unknown configurations stop for engineering review instead of being invented.\n8. Primary equipment is the project/dashboard reporting entity; valves, PSV and instrument bubbles remain traceable semantic child objects and roll up to the parent equipment/system.
