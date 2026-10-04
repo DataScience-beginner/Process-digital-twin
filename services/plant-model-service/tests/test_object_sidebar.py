@@ -5,6 +5,7 @@ from app.cleanup import build_cleanup
 from app.configurations import demo_integrated_configuration_model
 from app.db_schema import create_schema
 from app.drafter import build_drafter_instrumented
+from app.inspection_graph import build_inspection_graph
 from app.persistence import load_object_dossier, seed_demo_database
 from app.publishing import publish_all
 
@@ -131,3 +132,96 @@ def test_published_structured_calculation_outputs_are_embedded_and_renderable():
     assert "design_cv" in html
     assert 'typeof value==="object"' in html
     assert "structured-value" in html
+
+
+
+def test_all_visible_pid_entities_are_selectable_not_only_major_equipment():
+    html = _render_db_view()
+    for object_id in [
+        "EQ-V101",
+        "VLV-PSV101",
+        "VLV-VENT101",
+        "VLV-DRAIN101",
+        "INS-PT101",
+        "INS-PI101",
+        "INS-LT101",
+        "INS-LI101",
+        "INS-LIC101",
+        "VLV-LCV101",
+        "VLV-XV101",
+        "EQ-P101",
+        "INS-PI101S",
+        "INS-PI101D",
+        "JUNC-P101-DIS",
+        "VLV-NRV101",
+        "VLV-XV102",
+        "BOUND-PRODUCT",
+        "INS-FT101",
+        "INS-FIC101",
+        "VLV-FCV101",
+    ]:
+        assert f'data-object-id="{object_id}"' in html
+        assert f"selectEntity('{object_id}')" in html
+
+
+def test_process_lines_and_signal_routes_are_selectable_entities():
+    html = _render_db_view()
+    for entity_id in [
+        "LINE-1102",
+        "LINE-1103",
+        "LINE-1190",
+        "LINE-PSV101",
+        "LINE-VENT101",
+        "LINE-DRAIN101",
+        "SIGNAL-LT101-LIC101",
+        "SIGNAL-LIC101-LCV101",
+        "SIGNAL-FT101-FIC101",
+        "SIGNAL-FIC101-FCV101",
+    ]:
+        assert f'data-route-entity-id="{entity_id}"' in html
+
+
+def test_relationship_inspector_reverses_context_for_equipment_and_line():
+    model = demo_integrated_configuration_model()
+    plan = build_drafter_instrumented(model)
+    engine = create_schema("sqlite+pysqlite:///:memory:")
+    seed_demo_database(engine)
+    with Session(engine) as session:
+        publish_all(session)
+    with Session(engine) as session:
+        dossiers = {
+            obj.id: load_object_dossier(session, obj.id)
+            for obj in model.objects
+        }
+
+    graph = build_inspection_graph(model, dossiers, plan.routes)
+    entities = graph["entities"]
+
+    vessel_lines = {item["id"] for item in entities["EQ-V101"]["connected_lines"]}
+    assert "LINE-1102" in vessel_lines
+    assert "LINE-1190" in vessel_lines
+    assert "LINE-PSV101" in vessel_lines
+    assert "LINE-1103" not in vessel_lines
+
+    suction_path = [item["id"] for item in entities["LINE-1102"]["path"]]
+    assert suction_path == [
+        "EQ-V101",
+        "NOZ-V101-LIQ",
+        "VLV-LCV101",
+        "VLV-XV101",
+        "NOZ-P101-SUC",
+        "EQ-P101",
+    ]
+
+    assert entities["LINE-1102"]["from"]["id"] == "EQ-V101"
+    assert entities["LINE-1102"]["to"]["id"] == "EQ-P101"
+    assert entities["VLV-PSV101"]["parent_equipment"]["id"] == "EQ-V101"
+    assert entities["VLV-FCV101"]["parent_equipment"]["id"] == "EQ-P101"
+    assert entities["VLV-XV101"]["parent_equipment"]["id"] == "EQ-P101"
+
+
+def test_lines_are_contextual_not_dumped_into_every_object_calculation_tab():
+    html = _render_db_view()
+    assert "Connected Lines / Connections" in html
+    assert "Connected Nodes" in html
+    assert "Connected line calculations are opened by selecting the line itself." in html
