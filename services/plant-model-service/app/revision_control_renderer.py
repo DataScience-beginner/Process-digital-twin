@@ -146,6 +146,6 @@ h1{{font-size:19px;margin:0}} .meta{{font-size:9px;color:#64748b;margin-top:4px}
 table{{grid-column:1/-1;border-collapse:collapse;width:100%;font-size:9px}} th,td{{border:1px solid #ddd;padding:6px;text-align:left}} th{{width:30%;background:#f8fafc}}
 </style></head>
 <body><header><h1>Digital BDEP — Client Issue Portal</h1><div class="meta">Read-only formally issued engineering information</div></header>
-<main><div class="rule">This portal is bound to immutable Client Issues. Internal Working Revisions, Engineering Change Packages, reviewer comments, Engineering Conflicts, Integration Queue items and Release Candidates are not available in this client view.</div>
+<main><div class="rule">This portal is bound to immutable Client Issues and shows only formally released engineering information for the selected issue revision.</div>
 {"".join(issue_cards) if issue_cards else '<section class="issue"><div>No released Client Issue is available.</div></section>'}
 </main></body></html>"""
