@@ -63,7 +63,7 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 
 <!-- Separator -->
 <path class="sym" d="M184 233 Q220 207 256 233 L256 367 Q220 393 184 367 Z"/>
-<line class="sym" x1="220" y1="393" x2="220" y2="405"/>
+<line class="sym" x1="220" y1="380" x2="220" y2="405"/>
 <text x="220" y="304" text-anchor="middle" class="tag">V-101</text>
 
 <!-- LCV -->
