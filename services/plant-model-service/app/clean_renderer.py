@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import html
+import json
 
 from .cleanup import AnnotationKind, CleanupResult
 from .drafter import DrafterPlan
 from .instrumented_renderer import _bubble, _route_svg
 from .models import PlantModel
+from .thread_models import ObjectDossier
 
 
 def _annotation_svg(cleanup: CleanupResult) -> str:
@@ -29,6 +31,7 @@ def render_clean_pid_html(
     model: PlantModel,
     plan: DrafterPlan,
     cleanup: CleanupResult,
+    dossiers: dict[str, ObjectDossier] | None = None,
 ) -> str:
     quality_issues = [*plan.issues, *cleanup.issues]
     status = "RED" if any(i.severity == "RED" for i in quality_issues) else (
@@ -38,6 +41,12 @@ def render_clean_pid_html(
         f'<div class="issue {issue.severity.lower()}"><b>{issue.severity}</b> · {html.escape(issue.message)}</div>'
         for issue in quality_issues
     ) or '<div class="issue green"><b>GREEN</b> · No blocking drafting-quality issues detected.</div>'
+    dossier_payload = json.dumps(
+        {
+            object_id: dossier.model_dump(mode="json")
+            for object_id, dossier in (dossiers or {}).items()
+        }
+    ).replace("</", "<\\/")
 
     return f"""<!doctype html>
 <html>
@@ -65,6 +74,14 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .green{{color:#166534}} .amber{{color:#92400e}} .red{{color:#991b1b}}
 .muted{{font-size:11px;color:#666}} .section{{font-size:10px;font-weight:700;text-transform:uppercase;margin-top:14px}}
 .metric{{font-size:11px;padding:5px 0;border-bottom:1px solid #e5e7eb}}
+.selectable{{cursor:pointer}} .selectable:hover .sym{{stroke:#1d4ed8;stroke-width:2.2}}
+.tabs{{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0}}
+.tab{{font-size:10px;padding:5px 7px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer}}
+.tab.active{{background:#1f2937;color:#fff}}
+.card{{border:1px solid #e5e7eb;border-radius:5px;padding:7px;margin:6px 0;font-size:10px}}
+.card .value{{font-weight:700;margin-top:3px}} .prov{{color:#6b7280;font-size:9px;margin-top:4px}}
+.empty{{font-size:10px;color:#6b7280;padding:10px 0}}
+.object-head{{border-bottom:1px solid #ddd;padding-bottom:8px}}
 </style>
 </head>
 <body>
@@ -83,9 +100,11 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 {''.join(_route_svg(route) for route in plan.routes)}
 
 <!-- Separator -->
+<g class="selectable" data-object-id="EQ-V101" onclick="selectObject('EQ-V101')">
 <path class="sym" d="M184 233 Q220 207 256 233 L256 367 Q220 393 184 367 Z"/>
 <line class="sym" x1="220" y1="380" x2="220" y2="405"/>
 <text x="220" y="304" text-anchor="middle" class="tag">V-101</text>
+</g>
 
 <!-- Protection -->
 <path class="sym" d="M223 166 L247 166 L235 146 Z"/>
@@ -115,9 +134,11 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 <!-- Pump suction / pump -->
 <path class="sym" d="M518 419 L535 430 L518 441 Z M552 419 L535 430 L552 441 Z"/>
 <text x="535" y="458" text-anchor="middle" class="txt">XV-101</text>
+<g class="selectable" data-object-id="EQ-P101" onclick="selectObject('EQ-P101')">
 <circle class="sym" cx="690" cy="430" r="26"/>
 <path class="sym" d="M668 430 C688 408 712 412 716 430 C700 433 692 442 684 450"/>
 <text x="690" y="474" text-anchor="middle" class="tag">P-101</text>
+</g>
 
 <!-- Pump pressure -->
 {_bubble(610,360,"PI","PI-101S")}
@@ -136,11 +157,13 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 {_bubble(700,215,"FT","FT-101")}
 <line class="impulse" x1="700" y1="229" x2="700" y2="255"/>
 {_bubble(820,180,"FIC","FIC-101")}
+<g class="selectable" data-object-id="VLV-FCV101" onclick="selectObject('VLV-FCV101')">
 <path class="sym" d="M501 244 L520 255 L501 266 Z M539 244 L520 255 L539 266 Z"/>
 <line class="sym" x1="520" y1="255" x2="520" y2="232"/>
 <path class="sym" d="M508 232 Q520 215 532 232"/>
 <line class="sym" x1="508" y1="232" x2="532" y2="232"/>
 <text x="520" y="284" text-anchor="middle" class="txt">FCV-101</text>
+</g>
 
 {_annotation_svg(cleanup)}
 
@@ -154,19 +177,90 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 </svg>
 </section>
 <aside class="side">
-<h3>Drawing quality</h3>
+<div class="object-head">
+<h3 id="objectTag">Digital BDEP Object</h3>
+<div id="objectMeta" class="muted">Click V-101, P-101 or FCV-101</div>
+</div>
+<div class="tabs" id="tabs"></div>
+<div id="tabContent">
+<div class="empty">Select an engineering object to open its object-centric digital thread.</div>
+</div>
+<div class="section">Drawing quality</div>
 <div class="metric"><b>Status:</b> {status}</div>
-<div class="metric"><b>Annotation objects:</b> {len(cleanup.annotations)}</div>
-<div class="metric"><b>Protected zones:</b> {len(cleanup.protected_zones)}</div>
 <div class="metric"><b>Detected issues:</b> {len(quality_issues)}</div>
-<div class="section">Quality report</div>
-{quality_rows}
-<div class="section">Checks active</div>
-<div class="metric">✓ annotation overlap</div>
-<div class="metric">✓ drawing-border bounds</div>
-<div class="metric">✓ title-block intrusion</div>
-<div class="metric">✓ orthogonal route validation</div>
-<div class="metric">✓ protected process skeleton</div>
 </aside>
 </main>
+<script>
+const dossiers={dossier_payload};
+const tabDefs=[
+ ["overview","Overview"],
+ ["design_basis","Design Basis"],
+ ["process","Process"],
+ ["pid","P&ID"],
+ ["calculations","Calculations"],
+ ["instrumentation","Instrumentation"],
+ ["mechanical","Mechanical"],
+ ["electrical","Electrical"],
+ ["cost","Cost"],
+ ["epc_vendor","EPC / Vendor"],
+ ["operations","Operations"],
+ ["history","History"]
+];
+const domainMap={{
+ process:"simulation",
+ pid:"pid",
+ calculations:"process_calculation",
+ instrumentation:"instrumentation",
+ mechanical:"mechanical",
+ electrical:"electrical",
+ cost:"cost",
+ epc_vendor:"epc_vendor",
+ operations:"operations"
+}};
+let selectedId=null;
+let activeTab="overview";
+
+function esc(v){{
+ return String(v ?? "—").replace(/[&<>"']/g,m=>({{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}}[m]));
+}}
+function provenance(p){{
+ if(!p)return "";
+ const bits=[p.source_type,p.source_id,p.source_revision?("Rev "+p.source_revision):null,p.method].filter(Boolean);
+ return '<div class="prov">Source: '+bits.map(esc).join(" · ")+'</div>';
+}}
+function card(name,value,unit,status,p){{
+ return '<div class="card"><div>'+esc(name)+'</div><div class="value">'+esc(value)+(unit?(" "+esc(unit)):"")+'</div>'+(status?'<div class="prov">Status: '+esc(status)+'</div>':"")+provenance(p)+'</div>';
+}}
+function recordsFor(d,key){{
+ return (d.records||{{}})[key]||[];
+}}
+function renderTabs(){{
+ document.getElementById("tabs").innerHTML=tabDefs.map(([id,label])=>'<button class="tab '+(activeTab===id?"active":"")+'" onclick="openTab(\''+id+'\')">'+label+'</button>').join("");
+}}
+function render(){{
+ if(!selectedId||!dossiers[selectedId])return;
+ const d=dossiers[selectedId];
+ document.getElementById("objectTag").textContent=d.tag;
+ document.getElementById("objectMeta").textContent=(d.object_type||d.category)+" · "+(d.service||"");
+ renderTabs();
+ let html="";
+ if(activeTab==="overview"){{
+   html=card("Object ID",d.object_id,null,null,null)+card("Type",d.object_type||d.category,null,null,null)+card("Service",d.service||"—",null,null,null);
+ }} else if(activeTab==="design_basis"){{
+   html=(d.design_basis||[]).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No linked Design Basis criteria.</div>';
+ }} else if(activeTab==="history"){{
+   const all=[];
+   (d.design_basis||[]).forEach(x=>all.push({{name:x.name,value:x.value,unit:x.unit,status:x.status,provenance:x.provenance}}));
+   Object.values(d.records||{{}}).flat().forEach(x=>all.push(x));
+   html=all.map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No provenance records yet.</div>';
+ }} else {{
+   const key=domainMap[activeTab];
+   html=recordsFor(d,key).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No linked records yet for this discipline.</div>';
+ }}
+ document.getElementById("tabContent").innerHTML=html;
+}}
+function openTab(tab){{activeTab=tab;render();}}
+function selectObject(id){{selectedId=id;activeTab="overview";render();}}
+if(dossiers["EQ-V101"])selectObject("EQ-V101");
+</script>
 </body></html>"""
