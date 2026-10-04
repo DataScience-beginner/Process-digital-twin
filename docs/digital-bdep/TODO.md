@@ -326,10 +326,10 @@ Use engineering / digital-plant terminology in user-facing features. Git-like me
 - **Client Comment / Client Action** — client feedback tied to the exact released object/drawing/revision
 
 ### Revision-control foundation
-- [ ] Persistent Approved Engineering Baseline
-- [ ] Persistent Engineering Change Package
-- [ ] Property/object-level Engineering Change Records
-- [ ] Store base object/property revision used by each change
+- [x] Persistent Approved Engineering Baseline
+- [x] Persistent Engineering Change Package
+- [x] Property/object-level Engineering Change Records
+- [x] Store base object/property revision used by each change
 - [ ] Detect direct semantic Engineering Conflicts
 - [ ] Detect Stale Input / Refresh Against Baseline requirement
 - [ ] Support many concurrent ECPs without project-wide hard locking
@@ -337,16 +337,16 @@ Use engineering / digital-plant terminology in user-facing features. Git-like me
 - [ ] Immutable audit events for status transitions
 
 ### Review and approval
-- [ ] Maker cannot approve own engineering change
-- [ ] Configurable Discipline Check requirements
-- [ ] Configurable Affected-Discipline Review requirements
-- [ ] Engineering Approval Gate
-- [ ] Approval stores reviewed content hash / revision
+- [x] Maker cannot approve own engineering change
+- [x] Configurable Discipline Check requirements
+- [x] Configurable Affected-Discipline Review requirements
+- [x] Engineering Approval Gate
+- [x] Approval stores reviewed content hash / revision
 - [ ] Material change after approval invalidates prior approval
 - [ ] Explicit statuses: Working / In Review / Checked / Approved / Conflict / Stale Input / Affected / Update Required / Blocked
 
 ### Integration queue
-- [ ] Approved ECP enters Integration Queue
+- [x] Approved ECP enters Integration Queue
 - [ ] Revalidate ECP against latest Approved Engineering Baseline
 - [ ] Re-run deterministic engineering checks before integration
 - [ ] Re-run dependency / impact checks before integration
@@ -354,14 +354,14 @@ Use engineering / digital-plant terminology in user-facing features. Git-like me
 - [ ] Create new immutable Approved Engineering Baseline revision after successful integration
 
 ### Release candidate and client issue
-- [ ] Create Release Candidate from one exact Approved Engineering Baseline
+- [x] Create Release Candidate from one exact Approved Engineering Baseline
 - [ ] Freeze model, criteria, design cases, calculations, drawings, summaries and service versions in release manifest
 - [ ] Discipline Leads confirm release content
 - [ ] Project Engineering Manager approval
 - [ ] QA / Document Control issue check
 - [ ] Authorized release approval
-- [ ] Create immutable Client Issue
-- [ ] Client account sees **released Client Issues only**
+- [x] Create immutable Client Issue
+- [x] Client account sees **released Client Issues only**
 - [ ] Client cannot see ECPs, working revisions, internal review comments, conflicts, rejected changes or release candidates
 - [ ] Client comments are anchored to released object + drawing + Client Issue revision
 - [ ] Client comment may create a new internal action/ECP; it never edits the released baseline directly
