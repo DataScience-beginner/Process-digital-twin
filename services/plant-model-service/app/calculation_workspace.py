@@ -125,7 +125,7 @@ def _record(record) -> str:
 
     if not isinstance(detail, dict):
         return f"""
-        <article class="calc-card">
+        <article class="calc-card" id="calc-{html.escape(record.id)}">
           <div class="calc-head"><div><h3>{html.escape(record.name)}</h3><div class="sub">{html.escape(record.id)}</div></div><span class="status">{html.escape(record.status)}</span></div>
           {value_html}
           <div class="source">Source: {html.escape(record.provenance.source_id)} · {html.escape(record.provenance.method or "")}</div>
