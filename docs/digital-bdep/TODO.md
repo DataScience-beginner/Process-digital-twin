@@ -58,7 +58,7 @@ Goal: persist Design Basis, simulation results, plant objects and provenance.
 
 - [x] SQLAlchemy 2.x persistence layer
 - [x] PostgreSQL connection via DATABASE_URL
-- [ ] Alembic migrations
+- [x] Alembic migrations
 - [x] Core tables:
   - projects
   - design_basis_revisions
@@ -68,6 +68,7 @@ Goal: persist Design Basis, simulation results, plant objects and provenance.
   - simulation_cases
   - equipment
   - streams
+  - stream_case_results
   - stream_components
   - engineering_records
   - record_object_links
@@ -78,20 +79,20 @@ Goal: persist Design Basis, simulation results, plant objects and provenance.
 Goal: clicking an engineering object opens its complete Digital BDEP thread without showing the entire project.
 
 For V-101 / P-101 / FCV-101 show tabs:
-- [ ] Overview
-- [ ] Design Basis
-- [ ] Process
-- [ ] P&ID
-- [ ] Calculations
-- [ ] Instrumentation
-- [ ] Mechanical
-- [ ] Electrical
-- [ ] Cost
-- [ ] EPC / Vendor
-- [ ] Operations
-- [ ] History / provenance
+- [x] Overview
+- [x] Design Basis
+- [x] Process
+- [x] P&ID
+- [x] Calculations
+- [x] Instrumentation
+- [x] Mechanical
+- [x] Electrical
+- [x] Cost
+- [x] EPC / Vendor
+- [x] Operations
+- [x] History / provenance
 
-Every displayed value must show where it came from.
+Every displayed value must show where it came from. ✅ Implemented for the first V-101 / P-101 / FCV-101 database-backed vertical slice.
 
 ## MVP 0.7 — Process Configuration Matcher
 - [ ] Read canonical PFD topology
