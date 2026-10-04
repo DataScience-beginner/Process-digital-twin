@@ -152,6 +152,55 @@ Goal: complete the multidisciplinary engineering publish backbone before change 
 - [x] PSV, LCV, FT, FIC, LT, LIC and PT are selectable in the object inspector
 - [x] Published values remain object-specific and provenance-linked
 
+## MVP 0.9A — Detailed Object / Datasheet Views
+Goal: every selected engineering item can open a detailed calculation/datasheet view in addition to the compact sidebar.
+
+- [ ] Add "Open Detail / Pop-out" action for selected P&ID objects
+- [ ] Detailed object header: tag, type, service, revision, maturity/status
+- [ ] Show Design Basis criteria linked to the selected object
+- [ ] Calculation detail sections:
+  - [ ] inputs
+  - [ ] criteria / limits
+  - [ ] calculation method / service
+  - [ ] Normal / Maximum / Turndown case results
+  - [ ] governing case and why
+  - [ ] outputs
+  - [ ] provenance / revision
+- [ ] Full-page object datasheet route for pop-out
+- [ ] In-page modal/dialog for quick review
+
+## MVP 0.9B — PSV Scenario / Relief Detail
+- [ ] Structured relief-scenario register for PSV-101
+- [ ] Show why each scenario is considered
+- [ ] Show required inputs and current data completeness
+- [ ] Show screening result for each scenario
+- [ ] Show preliminary selected scenario and selection rationale
+- [ ] Do not claim a final governing case until the qualified relief service runs
+- [ ] Final orifice sizing remains a gated qualified deterministic service
+
+## MVP 0.9C — Stream Numbering, Line Numbering and Line Sizing
+- [ ] Add four-digit process stream numbers
+- [ ] Preserve simulator stream ID separately from engineering stream number
+- [ ] Add project fluid code and piping class criteria
+- [ ] Define line-number format: size - fluid code - stream/sequence - piping class
+- [ ] Deterministic liquid line-sizing service
+- [ ] Size V-101 → P-101 suction line
+- [ ] Size P-101 discharge line
+- [ ] Size minimum-flow recycle line
+- [ ] Show Normal / Maximum / Turndown velocities for selected sizes
+- [ ] Publish line-sizing records with criteria and provenance
+- [ ] Show stream numbers and line numbers on Engineering View
+- [ ] Add line summary to relevant equipment detailed views
+
+## MVP 0.9D — Project / Equipment Dashboard
+- [ ] Publication-stage completion summary
+- [ ] Equipment / valve / instrument status matrix
+- [ ] Discipline completion per object
+- [ ] Cost per major equipment / valve
+- [ ] Total section/project demo estimate
+- [ ] Outstanding / TBD / gated items
+- [ ] Links from dashboard to Engineering View and object detail pages
+
 ## MVP 1.0 — Vendor / EPC Information Thread
 - [ ] Vendor enquiry package inputs
 - [ ] Vendor document register
