@@ -1626,23 +1626,35 @@ def publish_process(session: Session) -> PublicationResult:
                     "line_number": line["line_number"],
                     "stream_number": line["stream_number"],
                     "selected_nps_in": line["selected_nps_in"],
+                    "selected_internal_diameter_in": round(line["selected_internal_diameter_in"], 4),
                     "required_diameter_in": round(line["required_diameter_in"], 3),
                     "design_velocity_ms": round(line["design_velocity_ms"], 3),
                     "velocity_limit_ms": line["criterion_velocity_ms"],
+                    "design_reynolds": round(line["design_reynolds"], 0),
+                    "design_friction_factor": round(line["design_friction_factor"], 5),
+                    "equivalent_length_m": line["equivalent_length_m"],
+                    "design_friction_dp_bar": round(line["design_friction_dp_bar"], 4),
+                    "friction_dp_limit_bar": line["friction_dp_limit_bar"],
                 },
                 unit=None,
                 status="process_checked_demo",
                 source_id=line["record_id"],
-                method="deterministic liquid velocity line-sizing service",
+                method="deterministic liquid hydraulic line-sizing service",
                 object_ids=line["object_ids"],
                 metadata=_calculation_detail(
                     inputs=[
                         {"name": "Service", "value": line["service"]},
                         {"name": "Stream number", "value": line["stream_number"] or "Derived recycle line"},
                         {"name": "Simulator stream", "value": line["simulator_stream_id"] or "Not a direct simulator stream"},
+                        {"name": "Design mass flow", "value": round(line["design_flow_tph"], 3), "unit": "t/h"},
+                        {"name": "Liquid density", "value": round(line["density_kgm3"], 3), "unit": "kg/m3"},
+                        {"name": "Liquid viscosity", "value": round(line["viscosity_cp"], 3), "unit": "cP"},
                     ],
                     criteria=[
-                        {"name": "Maximum velocity", "value": line["criterion_velocity_ms"], "unit": "m/s"},
+                        {"criterion_id": line["velocity_criterion_id"], "name": "Maximum velocity", "value": line["criterion_velocity_ms"], "unit": "m/s"},
+                        {"criterion_id": line["pressure_drop_criterion_id"], "name": "Maximum frictional pressure drop", "value": line["friction_dp_limit_bar"], "unit": "bar"},
+                        {"criterion_id": line["equivalent_length_criterion_id"], "name": "Equivalent hydraulic length", "value": line["equivalent_length_m"], "unit": "m"},
+                        {"criterion_id": "DBC-LINE-ROUGHNESS", "name": "Absolute roughness", "value": line["roughness_mm"], "unit": "mm"},
                         {"criterion_id": "DBC-LINE-FLUID-CODE", "name": "Fluid code", "value": _criterion(session, "DBC-LINE-FLUID-CODE")},
                         {"criterion_id": "DBC-LINE-PIPING-CLASS", "name": "Piping class", "value": _criterion(session, "DBC-LINE-PIPING-CLASS")},
                     ],
@@ -1651,14 +1663,18 @@ def publish_process(session: Session) -> PublicationResult:
                     governing_reason=line["governing_reason"],
                     outputs=[
                         {"name": "Line number", "value": line["line_number"]},
-                        {"name": "Required diameter", "value": round(line["required_diameter_in"], 3), "unit": "in"},
+                        {"name": "Required velocity-equivalent diameter", "value": round(line["required_diameter_in"], 3), "unit": "in"},
                         {"name": "Selected NPS", "value": line["selected_nps_in"], "unit": "in"},
+                        {"name": "Configured selected internal diameter", "value": round(line["selected_internal_diameter_in"], 4), "unit": "in"},
                         {"name": "Design velocity", "value": round(line["design_velocity_ms"], 3), "unit": "m/s"},
+                        {"name": "Design Reynolds number", "value": round(line["design_reynolds"], 0)},
+                        {"name": "Darcy friction factor", "value": round(line["design_friction_factor"], 5)},
+                        {"name": "Frictional pressure drop", "value": round(line["design_friction_dp_bar"], 4), "unit": "bar"},
                     ],
-                    method="Screening line sizing from published liquid density/flow and Design Basis velocity criterion; nominal NPS used as diameter for MVP.",
+                    method="Deterministic liquid hydraulic sizing using configured internal-diameter candidates, velocity and Darcy-Weisbach frictional pressure-drop criteria.",
                     trace=_trace(
                         trace_id=f'TRACE-{line["record_id"]}',
-                        calculation_type="liquid_process_line_velocity_sizing",
+                        calculation_type="liquid_process_line_hydraulic_sizing",
                         input_sources=[
                             {
                                 "source": (
@@ -1671,29 +1687,15 @@ def publish_process(session: Session) -> PublicationResult:
                                 "value": round(line["design_flow_tph"], 3),
                                 "unit": "t/h",
                             },
-                            {
-                                "source": "SIM-002 / stream 1102 liquid properties",
-                                "field": "density",
-                                "value": round(line["density_kgm3"], 3),
-                                "unit": "kg/m3",
-                            },
-                            {
-                                "source": "DB-001 Rev A",
-                                "criterion_id": line["velocity_criterion_id"],
-                                "field": "maximum liquid velocity",
-                                "value": line["criterion_velocity_ms"],
-                                "unit": "m/s",
-                            },
-                            {
-                                "source": "DB-001 Rev A",
-                                "criterion_id": "DBC-LINE-FLUID-CODE",
-                                "value": _criterion(session, "DBC-LINE-FLUID-CODE"),
-                            },
-                            {
-                                "source": "DB-001 Rev A",
-                                "criterion_id": "DBC-LINE-PIPING-CLASS",
-                                "value": _criterion(session, "DBC-LINE-PIPING-CLASS"),
-                            },
+                            {"source": "SIM-002 / stream 1102 liquid properties", "field": "density", "value": round(line["density_kgm3"], 3), "unit": "kg/m3"},
+                            {"source": "SIM-002 / stream 1102 liquid properties", "field": "viscosity", "value": round(line["viscosity_cp"], 3), "unit": "cP"},
+                            {"source": "DB-001 Rev A", "criterion_id": line["velocity_criterion_id"], "field": "maximum liquid velocity", "value": line["criterion_velocity_ms"], "unit": "m/s"},
+                            {"source": "DB-001 Rev A", "criterion_id": line["pressure_drop_criterion_id"], "field": "maximum frictional pressure drop", "value": line["friction_dp_limit_bar"], "unit": "bar"},
+                            {"source": "DB-001 Rev A", "criterion_id": line["equivalent_length_criterion_id"], "field": "equivalent hydraulic length", "value": line["equivalent_length_m"], "unit": "m"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-LINE-ROUGHNESS", "field": "absolute roughness", "value": line["roughness_mm"], "unit": "mm"},
+                            {"source": "Project demo pipe-ID table", "field": "candidate internal diameters", "value": "configured per NPS"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-LINE-FLUID-CODE", "value": _criterion(session, "DBC-LINE-FLUID-CODE")},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-LINE-PIPING-CLASS", "value": _criterion(session, "DBC-LINE-PIPING-CLASS")},
                         ],
                         steps=[
                             {
@@ -1714,7 +1716,7 @@ def publish_process(session: Session) -> PublicationResult:
                             },
                             {
                                 "step": 3,
-                                "title": "Calculate minimum flow area from velocity criterion",
+                                "title": "Calculate velocity-based minimum flow area",
                                 "equation": "A_required = Q / v_max",
                                 "substitution": f'{line["flow_m3s"]:.6f} / {line["criterion_velocity_ms"]:.3f}',
                                 "result": round(line["required_area_m2"], 6),
@@ -1722,47 +1724,72 @@ def publish_process(session: Session) -> PublicationResult:
                             },
                             {
                                 "step": 4,
-                                "title": "Convert required area to equivalent diameter",
+                                "title": "Calculate velocity-equivalent minimum diameter",
                                 "equation": "D_required = sqrt(4 × A_required / pi)",
                                 "substitution": f'sqrt(4 × {line["required_area_m2"]:.6f} / pi)',
-                                "result": round(line["required_diameter_m"], 6),
-                                "unit": "m",
-                            },
-                            {
-                                "step": 5,
-                                "title": "Convert required diameter to inches",
-                                "equation": "D_required,in = D_required,m / 0.0254",
-                                "substitution": f'{line["required_diameter_m"]:.6f} / 0.0254',
                                 "result": round(line["required_diameter_in"], 3),
                                 "unit": "in",
                             },
                             {
-                                "step": 6,
-                                "title": "Evaluate standard NPS candidates",
-                                "equation": "v_candidate = Q / (pi × D_candidate^2 / 4)",
-                                "substitution": "Evaluate each standard demo NPS against v_candidate <= v_max",
-                                "result": line["selected_nps_in"],
-                                "unit": "in selected",
-                                "note": (
-                                    f'Previous candidate {line["previous_candidate"]["candidate_nps_in"]:g} in '
-                                    f'{line["previous_candidate"]["result"]} at '
-                                    f'{line["previous_candidate"]["velocity_ms"]:.3f} m/s.'
-                                    if line["previous_candidate"]
-                                    else "Selected size is the smallest available demo NPS."
-                                ),
+                                "step": 5,
+                                "title": "Evaluate configured internal diameter",
+                                "equation": "D_ID = configured internal diameter for candidate NPS",
+                                "substitution": f'NPS {line["selected_nps_in"]:g} -> ID {line["selected_internal_diameter_in"]:.4f} in',
+                                "result": round(line["selected_internal_diameter_in"], 4),
+                                "unit": "in",
                             },
                             {
-                                "step": 7,
-                                "title": "Confirm selected-size design velocity",
-                                "equation": "v_selected = Q / A_selected",
-                                "substitution": f'Q={line["flow_m3s"]:.6f} m3/s, NPS={line["selected_nps_in"]:g} in',
+                                "step": 6,
+                                "title": "Calculate selected-size velocity",
+                                "equation": "v = Q / (pi D_ID^2 / 4)",
+                                "substitution": f'Q={line["flow_m3s"]:.6f} m3/s, ID={line["selected_internal_diameter_in"]:.4f} in',
                                 "result": round(line["design_velocity_ms"], 3),
                                 "unit": "m/s",
                             },
                             {
+                                "step": 7,
+                                "title": "Calculate Reynolds number",
+                                "equation": "Re = rho × v × D / mu",
+                                "substitution": f'rho={line["density_kgm3"]:.3f}, v={line["design_velocity_ms"]:.3f}, ID={line["selected_internal_diameter_in"]:.4f} in, mu={line["viscosity_cp"]:.3f} cP',
+                                "result": round(line["design_reynolds"], 0),
+                                "unit": None,
+                            },
+                            {
                                 "step": 8,
+                                "title": "Calculate Darcy friction factor",
+                                "equation": "f = 64/Re for laminar; Swamee-Jain approximation for turbulent flow",
+                                "substitution": f'Re={line["design_reynolds"]:.0f}, roughness={line["roughness_mm"]:.4f} mm',
+                                "result": round(line["design_friction_factor"], 5),
+                                "unit": None,
+                            },
+                            {
+                                "step": 9,
+                                "title": "Calculate frictional pressure drop",
+                                "equation": "DeltaP_f = f × (L_eq/D) × rho v^2 / 2",
+                                "substitution": f'f={line["design_friction_factor"]:.5f}, L_eq={line["equivalent_length_m"]:.1f} m, v={line["design_velocity_ms"]:.3f} m/s',
+                                "result": round(line["design_friction_dp_bar"], 4),
+                                "unit": "bar",
+                            },
+                            {
+                                "step": 10,
+                                "title": "Evaluate all configured NPS candidates",
+                                "equation": "PASS when velocity <= limit AND frictional DeltaP <= limit",
+                                "substitution": f'v <= {line["criterion_velocity_ms"]:.3f} m/s; DeltaP_f <= {line["friction_dp_limit_bar"]:.3f} bar',
+                                "result": f'NPS {line["selected_nps_in"]:g} selected',
+                                "unit": None,
+                                "note": (
+                                    f'Previous candidate NPS {line["previous_candidate"]["candidate_nps_in"]:g}: '
+                                    f'v={line["previous_candidate"]["velocity_ms"]:.3f} m/s, '
+                                    f'DeltaP={line["previous_candidate"]["friction_dp_bar"]:.4f} bar, '
+                                    f'result={line["previous_candidate"]["result"]}.'
+                                    if line["previous_candidate"]
+                                    else "Selected size is the smallest configured candidate."
+                                ),
+                            },
+                            {
+                                "step": 11,
                                 "title": "Assign engineering line number",
-                                "equation": 'Line No. = size-fluid code-sequence-piping class',
+                                "equation": "Line No. = size-fluid code-sequence-piping class",
                                 "substitution": line["line_number"],
                                 "result": line["line_number"],
                                 "unit": None,
@@ -1770,69 +1797,36 @@ def publish_process(session: Session) -> PublicationResult:
                         ],
                         selection_checks=line["candidate_checks"],
                         validation_checks=[
-                            {
-                                "check": "Selected velocity <= Design Basis limit",
-                                "actual": round(line["design_velocity_ms"], 3),
-                                "criterion": f'<= {line["criterion_velocity_ms"]:.3f} m/s',
-                                "result": (
-                                    "PASS"
-                                    if line["design_velocity_ms"] <= line["criterion_velocity_ms"]
-                                    else "FAIL"
-                                ),
-                            },
-                            {
-                                "check": "Previous smaller standard size rejected when applicable",
-                                "actual": (
-                                    line["previous_candidate"]["velocity_ms"]
-                                    if line["previous_candidate"]
-                                    else "N/A"
-                                ),
-                                "criterion": (
-                                    f'> {line["criterion_velocity_ms"]:.3f} m/s'
-                                    if line["previous_candidate"]
-                                    else "No smaller demo size"
-                                ),
-                                "result": (
-                                    "PASS"
-                                    if (
-                                        line["previous_candidate"] is None
-                                        or line["previous_candidate"]["result"] == "FAIL"
-                                    )
-                                    else "REVIEW"
-                                ),
-                            },
-                            {
-                                "check": "Density > 0",
-                                "actual": round(line["density_kgm3"], 3),
-                                "criterion": "> 0 kg/m3",
-                                "result": "PASS",
-                            },
-                            {
-                                "check": "Line numbering attributes available",
-                                "actual": line["line_number"],
-                                "criterion": "size-fluid-sequence-class",
-                                "result": "PASS",
-                            },
+                            {"check": "Selected velocity <= Design Basis limit", "actual": round(line["design_velocity_ms"], 3), "criterion": f'<= {line["criterion_velocity_ms"]:.3f} m/s', "result": "PASS" if line["design_velocity_ms"] <= line["criterion_velocity_ms"] else "FAIL"},
+                            {"check": "Selected frictional pressure drop <= Design Basis limit", "actual": round(line["design_friction_dp_bar"], 4), "criterion": f'<= {line["friction_dp_limit_bar"]:.4f} bar', "result": "PASS" if line["design_friction_dp_bar"] <= line["friction_dp_limit_bar"] else "FAIL"},
+                            {"check": "Reynolds number calculated", "actual": round(line["design_reynolds"], 0), "criterion": "> 0", "result": "PASS" if line["design_reynolds"] > 0 else "FAIL"},
+                            {"check": "Previous smaller candidate rejected when applicable", "actual": line["previous_candidate"]["result"] if line["previous_candidate"] else "N/A", "criterion": "FAIL or no smaller candidate", "result": "PASS" if line["previous_candidate"] is None or line["previous_candidate"]["result"] == "FAIL" else "REVIEW"},
+                            {"check": "Line numbering attributes available", "actual": line["line_number"], "criterion": "size-fluid-sequence-class", "result": "PASS"},
                         ],
                         assumptions=[
-                            "For the MVP, nominal NPS is used as hydraulic diameter; pipe schedule/internal diameter is not yet applied.",
-                            "Liquid density is taken from the published maximum-case liquid stream.",
-                            "Velocity is the current line-sizing criterion; pressure-drop and hydraulic-system criteria are not yet part of this screening service.",
+                            "A configured demo internal-diameter table is used; production projects must load approved piping-spec dimensions.",
+                            "Equivalent hydraulic length is a Design Basis demo input and includes a fitting allowance rather than explicit fitting-by-fitting K values.",
+                            "Liquid density and viscosity are taken from the published maximum-case liquid stream for design selection.",
+                            "Darcy-Weisbach friction loss is used with a laminar relation or Swamee-Jain turbulent approximation.",
                         ],
                         limitations=[
-                            "No pipe schedule/internal diameter, roughness, Reynolds number, friction factor, equivalent length, fittings/K-values, static head or pressure-drop calculation is included yet.",
-                            "No erosion, noise, flashing, cavitation, two-phase, slug-flow or minimum-velocity criteria are included yet.",
-                            "The selected NPS is therefore a preliminary velocity-screening result, not a final hydraulic line size.",
+                            "Static elevation, equipment/nozzle losses, individual fittings/K-values, control-valve loss, heat-transfer effects and full system-curve iteration are not yet included.",
+                            "No erosion, noise, flashing, cavitation, two-phase or slug-flow criteria are included.",
+                            "NPSHA impact requires the full suction-system hydraulic model and liquid vapor-pressure data.",
+                            "Final line size remains gated to the qualified project hydraulic service and piping specification.",
                         ],
                         downstream_consumers=[
                             "P&ID line annotation",
                             "Line list",
                             "Hydraulic calculation package",
+                            "Pump NPSHA/system-curve analysis",
                             "Control-valve pressure-drop basis",
                             "Mechanical piping class/specification workflow",
+                            "HAZOP line-deviation review",
                         ],
+                        qualification="Detailed deterministic demo hydraulic screening; final project hydraulic issue remains gated",
                     ),
-                ),
+                )                ),
             )
         )
 
