@@ -168,9 +168,10 @@ svg{{width:100%;min-width:1120px;height:auto;background:#fff}}
 .green{{color:#166534}} .amber{{color:#92400e}} .red{{color:#991b1b}}
 .muted{{font-size:11px;color:#666}} .section{{font-size:10px;font-weight:700;text-transform:uppercase;margin-top:14px}}
 .metric{{font-size:11px;padding:5px 0;border-bottom:1px solid #e5e7eb}}
-.selectable{{cursor:pointer}} .selectable:hover .sym,.selectable:hover .inst{{stroke:#1d4ed8;stroke-width:2.2}}
-.route-hit{{fill:none;stroke:rgba(37,99,235,0);stroke-width:12;pointer-events:stroke;cursor:pointer}}
-.route-hit:hover{{stroke:rgba(37,99,235,.16)}}
+.selectable{{cursor:pointer}}
+.selectable:hover .sym,.selectable:hover .inst{{stroke:#111;stroke-width:1.8}}
+.route-hit{{fill:none;stroke:rgba(15,23,42,0);stroke-width:12;pointer-events:stroke;cursor:pointer}}
+.route-hit:hover{{stroke:rgba(15,23,42,.08)}}
 .tabs{{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0}}
 .tab{{font-size:10px;padding:5px 7px;border:1px solid #cbd5e1;background:#fff;border-radius:4px;cursor:pointer}}
 .tab.active{{background:#1f2937;color:#fff}}
@@ -221,6 +222,23 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 .node-rel{{font-size:8px;color:#64748b;margin-left:4px}}
 .path-flow{{display:flex;flex-wrap:wrap;align-items:center;gap:5px;padding:7px}}
 .path-arrow{{color:#64748b}}
+.model-search{{width:100%;box-sizing:border-box;font-size:9px;padding:7px;border:1px solid #94a3b8;border-radius:4px;margin-bottom:7px}}
+.model-category{{border:1px solid #dbe1e8;margin:5px 0;background:#fff}}
+.model-category summary{{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:7px;background:#f8fafc;font-size:9px;font-weight:700}}
+.model-category summary::-webkit-details-marker{{display:none}}
+.model-category summary::before{{content:"▸";width:10px;color:#64748b}}
+.model-category[open] summary::before{{content:"▾"}}
+.model-count{{margin-left:auto;font-size:8px;color:#64748b;font-weight:400}}
+.browser-list{{padding:3px}}
+.browser-child{{width:100%;border:0;background:#fff;text-align:left;padding:6px 7px;border-radius:3px;cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:5px}}
+.browser-child:hover{{background:#f1f5f9}}
+.browser-child.active{{background:#e2e8f0;font-weight:700}}
+.browser-label{{font-size:9px}} .browser-meta{{font-size:7px;color:#64748b;margin-top:2px;font-weight:400}}
+.browser-type{{font-size:7px;color:#64748b;align-self:center}}
+.utility-drawer{{border:1px solid #dbe1e8;margin-top:7px;background:#fff}}
+.utility-drawer>summary{{cursor:pointer;padding:7px;background:#f8fafc;font-size:9px;font-weight:700}}
+.utility-body{{padding:7px}}
+.focus-status{{font-size:8px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;padding:5px 7px;border-radius:4px}}
 #propertiesContent{{display:none}}
 @media(max-width:1180px){{
  main.workspace-grid{{grid-template-columns:230px minmax(620px,1fr)}}
@@ -241,87 +259,82 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <main id="workspaceGrid" class="workspace-grid">
 <aside id="leftSidebar" class="left-sidebar">
   <div class="workspace-section">
-    <div class="workspace-heading">Workspace</div>
-    <div class="workspace-nav">
-      <button class="workspace-btn active" data-canvas="pid1" onclick="switchCanvas('pid1',this)">P&ID 001 — Engineering</button>
-      <button class="workspace-btn" data-canvas="plant" onclick="switchCanvas('plant',this)">Plant Model / Digital Thread</button>
-      <button class="workspace-btn" data-canvas="pid2" onclick="switchCanvas('pid2',this)">P&ID 002 — Continuation</button>
-      <button class="workspace-btn" data-canvas="dashboard" onclick="switchCanvas('dashboard',this)">Project Dashboard</button>
-      <button class="workspace-btn" data-canvas="hazop" onclick="switchCanvas('hazop',this)">HAZOP</button>
-      <button class="workspace-btn" data-canvas="summaries" onclick="switchCanvas('summaries',this)">BDEP Summaries</button>
-      <button class="workspace-btn" data-canvas="configuration" onclick="switchCanvas('configuration',this)">Configuration Match</button>
-      <button class="workspace-btn" data-canvas="compiler" onclick="switchCanvas('compiler',this)">Compiler / Plant Data</button>
-    </div>
+    <div class="workspace-heading">Engineering Model Browser</div>
+    <input id="modelSearch" class="model-search" type="search" placeholder="Search tag, line, stream, service..." oninput="renderModelBrowser()">
+    <div id="modelBrowser"></div>
   </div>
-  <div class="workspace-section">
-    <div class="workspace-heading">Publish Project Stages</div>
-    <div class="publishbar left-publish" id="publishbar"></div>
-  </div>
-  <div class="workspace-section">
-    <div class="workspace-heading">Discipline Inspector</div>
-    <div class="workspace-nav">
-      <button class="workspace-btn" onclick="focusInspector('design_basis')">Design Basis</button>
-      <button class="workspace-btn" onclick="focusInspector('process')">Process / Safety</button>
-      <button class="workspace-btn" onclick="focusInspector('calculations')">Full Calculations</button>
-      <button class="workspace-btn" onclick="focusInspector('instrumentation')">Instrumentation / DCS</button>
-      <button class="workspace-btn" onclick="focusInspector('mechanical')">Technical / Mechanical</button>
-      <button class="workspace-btn" onclick="focusInspector('electrical')">Electrical</button>
-      <button class="workspace-btn" onclick="focusInspector('cost')">Cost Estimate</button>
-      <button class="workspace-btn" onclick="focusInspector('epc_vendor')">Vendor / EPC</button>
-      <button class="workspace-btn" onclick="focusInspector('operations')">Operations</button>
-    </div>
-  </div>
-  <div class="workspace-section">
-    <div class="workspace-heading">Sketch / Stencil Palette</div>
-    <div class="stencil-grid">
-      <div class="stencil" draggable="true" data-stencil="vessel" ondragstart="stencilDragStart(event)">Vessel</div>
-      <div class="stencil" draggable="true" data-stencil="pump" ondragstart="stencilDragStart(event)">Pump</div>
-      <div class="stencil" draggable="true" data-stencil="exchanger" ondragstart="stencilDragStart(event)">Exchanger</div>
-      <div class="stencil" draggable="true" data-stencil="manual_valve" ondragstart="stencilDragStart(event)">Manual Valve</div>
-      <div class="stencil" draggable="true" data-stencil="control_valve" ondragstart="stencilDragStart(event)">Control Valve</div>
-      <div class="stencil" draggable="true" data-stencil="psv" ondragstart="stencilDragStart(event)">PSV</div>
-      <div class="stencil" draggable="true" data-stencil="instrument" ondragstart="stencilDragStart(event)">Instrument</div>
-      <div class="stencil" draggable="true" data-stencil="boundary" ondragstart="stencilDragStart(event)">Off-page / B.L.</div>
-    </div>
-    <div class="muted" style="font-size:8px;margin-top:5px">Drag onto P&ID 001. New items stay provisional until a controlled change set is prepared.</div>
-  </div>
-  <div class="workspace-section">
-    <div class="workspace-heading">Drafting Assistance</div>
-    <div style="display:grid;gap:5px;margin-bottom:6px">
-      <label style="font-size:8px">Connector type
-        <select id="connectorKindMode" style="width:100%;font-size:8px;padding:4px;border:1px solid #cbd5e1">
-          <option value="auto">Auto-guided</option>
-          <option value="process">Process line</option>
-          <option value="signal">Control signal</option>
-          <option value="impulse">Impulse / sensing</option>
-        </select>
-      </label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:8px">
-        <label><input id="optSnap" type="checkbox" checked> Grid snap</label>
-        <label><input id="optOrthogonal" type="checkbox" checked> Orthogonal route</label>
-        <label><input id="optOverlap" type="checkbox" checked> Avoid overlap</label>
-        <label><input id="optBoundary" type="checkbox" checked> Keep in sheet</label>
+
+  <details class="utility-drawer">
+    <summary>Project Workflow & Views</summary>
+    <div class="utility-body">
+      <div class="workspace-nav" style="margin-bottom:7px">
+        <button class="workspace-btn" data-canvas="pid1" onclick="switchCanvas('pid1',this)">P&ID 001 — Engineering</button>
+        <button class="workspace-btn" data-canvas="plant" onclick="switchCanvas('plant',this)">Plant Model / Digital Thread</button>
+        <button class="workspace-btn" data-canvas="pid2" onclick="switchCanvas('pid2',this)">P&ID 002 — Continuation</button>
+        <button class="workspace-btn" data-canvas="dashboard" onclick="switchCanvas('dashboard',this)">Project Dashboard</button>
+        <button class="workspace-btn" data-canvas="hazop" onclick="switchCanvas('hazop',this)">HAZOP</button>
+        <button class="workspace-btn" data-canvas="summaries" onclick="switchCanvas('summaries',this)">BDEP Summaries</button>
+        <button class="workspace-btn" data-canvas="configuration" onclick="switchCanvas('configuration',this)">Configuration Match</button>
+        <button class="workspace-btn" data-canvas="compiler" onclick="switchCanvas('compiler',this)">Compiler / Plant Data</button>
       </div>
+      <div class="workspace-heading">Publish Stages</div>
+      <div class="publishbar left-publish" id="publishbar"></div>
     </div>
-    <div class="tool-grid">
-      <button id="connectorBtn" class="tool-btn" onclick="toggleConnectorMode()">Guided Connector</button>
-      <button class="tool-btn" onclick="autoCorrectDrafts()">Auto-correct</button>
-      <button class="tool-btn" onclick="validateDrafts()">Validate Draft</button>
-      <button class="tool-btn" onclick="undoDraft()">Undo</button>
-      <button class="tool-btn" onclick="clearDrafts()">Clear Draft</button>
-      <button class="tool-btn" onclick="prepareChangeSet()">Prepare Change Set</button>
+  </details>
+
+  <details class="utility-drawer">
+    <summary>Sketch / Stencils & Drafting</summary>
+    <div class="utility-body">
+      <div class="stencil-grid">
+        <div class="stencil" draggable="true" data-stencil="vessel" ondragstart="stencilDragStart(event)">Vessel</div>
+        <div class="stencil" draggable="true" data-stencil="pump" ondragstart="stencilDragStart(event)">Pump</div>
+        <div class="stencil" draggable="true" data-stencil="exchanger" ondragstart="stencilDragStart(event)">Exchanger</div>
+        <div class="stencil" draggable="true" data-stencil="manual_valve" ondragstart="stencilDragStart(event)">Manual Valve</div>
+        <div class="stencil" draggable="true" data-stencil="control_valve" ondragstart="stencilDragStart(event)">Control Valve</div>
+        <div class="stencil" draggable="true" data-stencil="psv" ondragstart="stencilDragStart(event)">PSV</div>
+        <div class="stencil" draggable="true" data-stencil="instrument" ondragstart="stencilDragStart(event)">Instrument</div>
+        <div class="stencil" draggable="true" data-stencil="boundary" ondragstart="stencilDragStart(event)">Off-page / B.L.</div>
+      </div>
+      <div class="muted" style="font-size:8px;margin:6px 0">Dropped items are provisional. The published engineering model is unchanged until controlled promotion.</div>
+      <div style="display:grid;gap:5px;margin-bottom:6px">
+        <label style="font-size:8px">Connector type
+          <select id="connectorKindMode" style="width:100%;font-size:8px;padding:4px;border:1px solid #cbd5e1">
+            <option value="auto">Auto-guided</option>
+            <option value="process">Process line</option>
+            <option value="signal">Control signal</option>
+            <option value="impulse">Impulse / sensing</option>
+          </select>
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:8px">
+          <label><input id="optSnap" type="checkbox" checked> Grid snap</label>
+          <label><input id="optOrthogonal" type="checkbox" checked> Orthogonal route</label>
+          <label><input id="optOverlap" type="checkbox" checked> Avoid overlap</label>
+          <label><input id="optBoundary" type="checkbox" checked> Keep in sheet</label>
+        </div>
+      </div>
+      <div class="tool-grid">
+        <button id="connectorBtn" class="tool-btn" onclick="toggleConnectorMode()">Guided Connector</button>
+        <button class="tool-btn" onclick="autoCorrectDrafts()">Auto-correct</button>
+        <button class="tool-btn" onclick="validateDrafts()">Validate Draft</button>
+        <button class="tool-btn" onclick="undoDraft()">Undo</button>
+        <button class="tool-btn" onclick="clearDrafts()">Clear Draft</button>
+        <button class="tool-btn" onclick="prepareChangeSet()">Prepare Change Set</button>
+      </div>
+      <div id="toolStatus" class="tool-status">Draft mode ready.</div>
     </div>
-    <div id="toolStatus" class="tool-status">Draft mode ready. Drop a stencil on the P&ID or start Guided Connector.</div>
-  </div>
-  <div class="workspace-section">
-    <div class="workspace-heading">Exports</div>
-    <div class="workspace-nav">
+  </details>
+
+  <details class="utility-drawer">
+    <summary>Exports</summary>
+    <div class="utility-body workspace-nav">
+      <a class="workspace-btn" href="/export/drawing.svg">Drawing SVG</a>
       <a class="workspace-btn" href="/export/dexpi.xml">DEXPI XML</a>
       <a class="workspace-btn" href="/export/visio.vdx">Visio VDX</a>
       <a class="workspace-btn" href="/export/drawing.dxf">CAD DXF</a>
       <a class="workspace-btn" href="/export/drawing.dwg">DWG Adapter</a>
+      <a class="workspace-btn" href="/export/summaries.pdf">BDEP Summary PDF</a>
     </div>
-  </div>
+  </details>
 </aside>
 <section class="center-workspace">
   <div class="canvas-toolbar">
@@ -330,6 +343,8 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
     <button class="canvas-btn active" data-canvas="pid1" onclick="switchCanvas('pid1',this)">P&ID 001</button>
     <button class="canvas-btn" data-canvas="plant" onclick="switchCanvas('plant',this)">Plant Model</button>
     <button class="canvas-btn" data-canvas="pid2" onclick="switchCanvas('pid2',this)">P&ID 002</button>
+    <button class="canvas-btn" onclick="resetDrawingView()">Fit Drawing</button>
+    <span id="canvasFocusText" class="focus-status">Whole drawing</span>
     <button class="canvas-btn" onclick="toggleRightSidebar()">Right ▣</button>
   </div>
   <div id="pidCanvasPane">
@@ -469,10 +484,15 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 </div>
 </div>
 <div id="propertiesContent"></div>
-<div class="section">Drawing quality</div>
-<div class="metric"><b>Status:</b> {status}</div>
-<div class="metric"><b>Detected issues:</b> {len(quality_issues)}</div>
 </aside>
+<template id="drawingQualityTemplate">
+  <div class="property-group">
+    <div class="property-group-title">Drawing / QA</div>
+    <div class="property-row"><div class="property-name">Drawing Status</div><div class="property-value">{status}</div></div>
+    <div class="property-row"><div class="property-name">Detected Issues</div><div class="property-value">{len(quality_issues)}</div></div>
+  </div>
+  <div class="detail-section"><h4>Drafting Quality Checks</h4>{quality_rows}</div>
+</template>
 </main>
 <dialog id="detailDialog">
 <div class="dialog-head">
@@ -551,6 +571,7 @@ const tabDefs=[
  ["cost","Cost Estimate"],
  ["epc_vendor","EPC / Vendor"],
  ["operations","Operations"],
+ ["quality","Drawing / QA"],
  ["history","History"]
 ];
 const domainMap={{
@@ -750,6 +771,8 @@ function render(){{
    }} else {{
      html=recordsFor(d,"process_calculation").map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)+calculationDetail(x)).join("")||'<div class="empty">No direct calculation records for this entity. Connected line calculations are opened by selecting the line itself.</div>';
    }}
+ }} else if(activeTab==="quality"){{
+   html=document.getElementById("drawingQualityTemplate").innerHTML;
  }} else if(activeTab==="history"){{
    if(!d){{
      html=card("Status",e.status||"semantic",null,null,e.record_provenance||null);
