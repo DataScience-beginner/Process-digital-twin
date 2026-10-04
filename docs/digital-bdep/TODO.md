@@ -44,14 +44,14 @@ Goal: make Design Basis criteria structured, queryable and directly connected to
 ## MVP 0.6B — Simulation Publisher
 Goal: prove that the upstream process topology comes from a simulation-like source, not from the P&ID.
 
-- [ ] Define simulation case model
-- [ ] Support NORMAL / MAXIMUM / TURNDOWN cases
-- [ ] Publish equipment objects only at simulation/PFD level
-- [ ] Publish stream objects with source/destination equipment
-- [ ] Publish P / T / flow / phase / density / viscosity / enthalpy / composition
-- [ ] Link every simulation case to a Design Basis revision
-- [ ] Generate canonical PFD graph from equipment + streams
-- [ ] Tests for V-101 -> stream -> P-101 topology
+- [x] Define simulation case model
+- [x] Support NORMAL / MAXIMUM / TURNDOWN cases
+- [x] Publish equipment objects only at simulation/PFD level
+- [x] Publish stream objects with source/destination equipment
+- [x] Publish P / T / flow / phase / density / viscosity / enthalpy / composition
+- [x] Link every simulation case to a Design Basis revision
+- [x] Generate canonical PFD graph from equipment + streams
+- [x] Tests for V-101 -> stream -> P-101 topology
 
 ## MVP 0.6C — PostgreSQL Canonical Process Database
 Goal: persist Design Basis, simulation results, plant objects and provenance.
