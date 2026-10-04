@@ -1,14 +1,16 @@
 import os
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from .calculation_workspace import render_calculation_workspace_html
 from .clean_renderer import render_clean_pid_html
 from .config_matcher import match_configuration
 from .config_match_renderer import render_configuration_match_html
 from .cleanup import build_cleanup
 from .configurations import demo_integrated_configuration_model
+from .continuation_renderer import render_continuation_pid_html
 from .drafter import build_drafter_instrumented, build_drafter_skeleton
 from .dashboard_renderer import render_dashboard_html
 from .db_schema import engine_from_url
@@ -16,7 +18,18 @@ from .graph_renderer import render_graph_html
 from .inspection_graph import build_inspection_graph
 from .instrumented_renderer import render_instrumented_pid_html
 from .entity_detail_renderer import render_entity_detail_html
+from .exporters import (
+    export_dexpi_oriented_xml,
+    export_dxf_demo,
+    export_summary_csv,
+    export_visio_vdx_demo,
+    simple_text_pdf,
+    workspace_pdf_lines,
+)
+from .hazop_renderer import render_hazop_html
 from .skeleton_renderer import render_drafter_skeleton_html
+from .summaries import build_bdep_summaries
+from .summaries_renderer import render_summaries_html
 from .persistence import (
     database_summary,
     ensure_demo_seeded,
@@ -276,3 +289,110 @@ def publish_everything():
 @app.get("/graph", response_class=HTMLResponse)
 def graph_view():
     return render_graph_html(_compile_case("CASE-NORMAL").plant_model)
+
+
+def _full_engineering_context():
+    compilation = _compile_case("CASE-NORMAL")
+    model = compilation.plant_model
+    plan = build_drafter_instrumented(model)
+    engine = _app_engine()
+    with Session(engine) as session:
+        dossiers = {
+            obj.id: load_object_dossier(session, obj.id)
+            for obj in model.objects
+        }
+    inspection = build_inspection_graph(model, dossiers, plan.routes)
+    return model, plan, dossiers, inspection
+
+
+@app.get("/workspace/{entity_id}", response_class=HTMLResponse)
+def calculation_workspace(entity_id: str):
+    model, plan, dossiers, inspection = _full_engineering_context()
+    entity = inspection["entities"].get(entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Unknown engineering entity: {entity_id}")
+    dossier = dossiers.get(entity_id)
+    return render_calculation_workspace_html(entity=entity, dossier=dossier)
+
+
+@app.get("/hazop", response_class=HTMLResponse)
+def hazop_view():
+    return render_hazop_html()
+
+
+@app.get("/summaries", response_class=HTMLResponse)
+def summaries_view():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    summaries = build_bdep_summaries(model=model, dossiers=dossiers, inspection=inspection)
+    return render_summaries_html(summaries)
+
+
+@app.get("/engineering-2", response_class=HTMLResponse)
+def engineering_continuation_view():
+    return render_continuation_pid_html()
+
+
+@app.get("/export/workspace/{entity_id}.pdf")
+def export_workspace_pdf(entity_id: str):
+    model, plan, dossiers, inspection = _full_engineering_context()
+    entity = inspection["entities"].get(entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Unknown engineering entity: {entity_id}")
+    dossier = dossiers.get(entity_id)
+    payload = simple_text_pdf(
+        f"Digital BDEP - {entity.get('tag') or entity_id} Engineering Calculation",
+        workspace_pdf_lines(entity, dossier),
+    )
+    return Response(
+        content=payload,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{entity_id}.pdf"'},
+    )
+
+
+@app.get("/export/dexpi.xml")
+def export_dexpi_xml():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    payload = export_dexpi_oriented_xml(model, inspection)
+    return Response(
+        content=payload,
+        media_type="application/xml",
+        headers={"Content-Disposition": 'attachment; filename="digital_bdep_dexpi_oriented.xml"'},
+    )
+
+
+@app.get("/export/visio.vdx")
+def export_visio_vdx():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    payload = export_visio_vdx_demo(model, plan)
+    return Response(
+        content=payload,
+        media_type="application/vnd.visio",
+        headers={"Content-Disposition": 'attachment; filename="PID-DEMO-001.vdx"'},
+    )
+
+
+@app.get("/export/drawing.dxf")
+def export_drawing_dxf():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    payload = export_dxf_demo(model, plan)
+    return Response(
+        content=payload,
+        media_type="application/dxf",
+        headers={"Content-Disposition": 'attachment; filename="PID-DEMO-001.dxf"'},
+    )
+
+
+@app.get("/export/summary/{summary_key}.csv")
+def export_one_summary_csv(summary_key: str):
+    model, plan, dossiers, inspection = _full_engineering_context()
+    summaries = build_bdep_summaries(model=model, dossiers=dossiers, inspection=inspection)
+    try:
+        payload = export_summary_csv(summaries, summary_key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown summary: {summary_key}") from exc
+    return Response(
+        content=payload,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{summary_key}.csv"'},
+    )
