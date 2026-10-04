@@ -1,0 +1,35 @@
+name: Plant Model Python CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/digital-bdep-foundation
+    paths:
+      - "services/plant-model-service/**"
+      - ".github/workflows/plant-model-python.yml"
+  pull_request:
+    paths:
+      - "services/plant-model-service/**"
+      - ".github/workflows/plant-model-python.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/plant-model-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Test
+        run: pytest -q
