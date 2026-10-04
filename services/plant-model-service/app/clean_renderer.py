@@ -331,6 +331,8 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 </dialog>
 <script>
 const dossiers={dossier_payload};
+const inspection={inspection_payload};
+const entities=inspection.entities||{{}};
 let publicationStages={stage_payload};
 const publishDefs=[
  ["design_basis","Publish Design Basis"],
@@ -379,11 +381,12 @@ async function publishAllStages(){{
 }}
 const tabDefs=[
  ["overview","Overview"],
+ ["connections","Connections"],
  ["design_basis","Design Basis"],
- ["process","Process"],
- ["pid","P&ID"],
+ ["process","Process / Safety"],
+ ["pid","P&ID / Lines"],
  ["calculations","Calculations"],
- ["instrumentation","Instrumentation"],
+ ["instrumentation","Instrumentation / DCS"],
  ["mechanical","Technical / Mechanical"],
  ["electrical","Electrical"],
  ["cost","Cost Estimate"],
@@ -392,7 +395,6 @@ const tabDefs=[
  ["history","History"]
 ];
 const domainMap={{
- process:"simulation",
  pid:"pid",
  calculations:"process_calculation",
  instrumentation:"instrumentation",
@@ -432,8 +434,11 @@ function provenance(p){{
 function card(name,value,unit,status,p){{
  return '<div class="card"><div>'+esc(name)+'</div><div class="value">'+formatValue(value,unit)+'</div>'+(status?'<div class="prov">Status: '+esc(status)+'</div>':"")+provenance(p)+'</div>';
 }}
-function recordsFor(d,key){{
- return (d.records||{{}})[key]||[];
+function entityFor(id){{return entities[id]||null;}}
+function dossierFor(id){{return dossiers[id]||null;}}
+function recordsFor(d,key,includeLines=false){{
+ const rows=(d&&d.records?d.records[key]:[])||[];
+ return includeLines?rows:rows.filter(x=>!String(x.id||"").startsWith("LINE-"));
 }}
 function sourceLine(p){{
  if(!p)return "";
@@ -448,56 +453,152 @@ function propertyGroup(title,items){{
  if(!items.length)return "";
  return '<div class="property-group"><div class="property-group-title">'+esc(title)+'</div>'+items.join("")+'</div>';
 }}
-function renderProperties(d){{
+function nodeButton(ref){{
+ if(!ref)return "";
+ return '<button class="node-link" data-entity-id="'+esc(ref.id)+'" onclick="selectEntity(this.dataset.entityId)">'+esc(ref.label||ref.id)+(ref.relation?'<span class="node-rel">'+esc(humanKey(ref.relation))+'</span>':"")+'</button>';
+}}
+function nodeGroup(title,refs){{
+ if(!Array.isArray(refs)||!refs.length)return "";
+ return '<div class="node-group"><div class="node-group-title">'+esc(title)+'</div><div class="node-list">'+refs.map(nodeButton).join("")+'</div></div>';
+}}
+function connectedLineRefs(e){{
+ return (e&&e.connected_lines||[]).map(x=>({{id:x.id,label:x.label,relation:(x.direction||"connected")+"_line"}}));
+}}
+function renderConnections(e){{
+ if(!e)return '<div class="empty">No entity selected.</div>';
+ let h="";
+ if(e.parent_equipment)h+=nodeGroup("Parent Equipment",[e.parent_equipment]);
+ if(e.from)h+=nodeGroup("From",[e.from]);
+ if(e.through&&e.through.length)h+=nodeGroup("Through",e.through);
+ if(e.to)h+=nodeGroup("To",[e.to]);
+ if(e.children&&e.children.length){{
+   const byCat={{}};
+   e.children.forEach(x=>{{const k=humanKey(x.category||"child");(byCat[k]||(byCat[k]=[])).push(x);}});
+   Object.entries(byCat).forEach(([cat,refs])=>{{h+=nodeGroup("Contained "+cat,refs);}});
+ }}
+ if(e.relationships&&e.relationships.length){{
+   const byRel={{}};
+   e.relationships.forEach(x=>{{const k=humanKey(x.relation||"related");(byRel[k]||(byRel[k]=[])).push(x);}});
+   Object.entries(byRel).forEach(([rel,refs])=>{{h+=nodeGroup(rel,refs);}});
+ }}
+ if(e.connected_lines&&e.connected_lines.length)h+=nodeGroup("Connected Lines / Connections",connectedLineRefs(e));
+ if(e.path&&e.path.length){{
+   h+='<div class="node-group"><div class="node-group-title">Complete Path</div><div class="path-flow">'+e.path.map((x,i)=>nodeButton(x)+(i<e.path.length-1?'<span class="path-arrow">→</span>':"")).join("")+'</div></div>';
+ }}
+ return h||'<div class="empty">No direct semantic relationships.</div>';
+}}
+function lineRecord(e){{
+ if(!e||!e.record_value)return null;
+ return {{
+   id:e.id,
+   name:"Line / connection engineering record",
+   value:e.record_value,
+   unit:null,
+   status:e.status||"published",
+   provenance:e.record_provenance||null,
+   metadata:e.record_metadata||{{}}
+ }};
+}}
+function renderProperties(){{
+ const e=entityFor(selectedId);
+ const d=dossierFor(selectedId);
+ if(!e)return;
  const groups=[];
  groups.push(propertyGroup("Identification",[
-   propertyRow("Object ID",d.object_id,null,null),
-   propertyRow("Tag",d.tag,null,null),
-   propertyRow("Type",d.object_type||d.category,null,null),
-   propertyRow("Service",d.service||"—",null,null)
+   propertyRow("Entity ID",e.id,null,null),
+   propertyRow("Tag / Number",e.tag,null,null),
+   propertyRow("Category",e.category,null,null),
+   propertyRow("Type",e.object_type||e.category,null,null),
+   propertyRow("Service",e.service||"—",null,null)
  ]));
- groups.push(propertyGroup("Design Basis",(d.design_basis||[]).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance))));
- const definitions=[
-   ["Process / Simulation","simulation"],
-   ["Calculations","process_calculation"],
-   ["P&ID","pid"],
-   ["Instrumentation","instrumentation"],
-   ["Technical / Mechanical","mechanical"],
-   ["Electrical","electrical"],
-   ["Cost Estimate","cost"],
-   ["EPC / Vendor","epc_vendor"],
-   ["Operations","operations"]
- ];
- definitions.forEach(([title,key])=>{{
-   groups.push(propertyGroup(title,recordsFor(d,key).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance))));
- }});
- document.getElementById("propertiesContent").innerHTML=groups.filter(Boolean).join("")||'<div class="empty">No properties available.</div>';
+ if(e.line_number||e.stream_number){{
+   groups.push(propertyGroup("Line Definition",[
+     propertyRow("Line Number",e.line_number||e.tag,null,null),
+     propertyRow("Stream Number",e.stream_number||"Derived / N.A.",null,null),
+     propertyRow("Semantic Edges",e.semantic_edge_ids||[],null,null)
+   ]));
+ }}
+ if(d){{
+   groups.push(propertyGroup("Design Basis",(d.design_basis||[]).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance))));
+   const definitions=[
+     ["Process / Simulation","simulation"],
+     ["Calculations","process_calculation"],
+     ["P&ID","pid"],
+     ["Instrumentation / DCS","instrumentation"],
+     ["Technical / Mechanical","mechanical"],
+     ["Electrical","electrical"],
+     ["Cost Estimate","cost"],
+     ["EPC / Vendor","epc_vendor"],
+     ["Operations","operations"]
+   ];
+   definitions.forEach(([title,key])=>{{
+     groups.push(propertyGroup(title,recordsFor(d,key).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance))));
+   }});
+ }}
+ const lr=lineRecord(e);
+ if(lr)groups.push(propertyGroup("Sizing / Engineering Output",[propertyRow(lr.name,lr.value,null,lr.provenance)]));
+ document.getElementById("propertiesContent").innerHTML=groups.filter(Boolean).join("")+renderConnections(e);
 }}
 function renderTabs(){{
  document.getElementById("tabs").innerHTML=tabDefs.map(([id,label])=>'<button class="tab '+(activeTab===id?"active":"")+'" onclick="openTab(\''+id+'\')">'+label+'</button>').join("");
 }}
+function renderLineOverview(e){{
+ return card("Entity ID",e.id,null,null,null)+card("Type",e.object_type||e.category,null,null,null)+card("Service",e.service||"—",null,null,null)+(e.line_number?card("Line Number",e.line_number,null,e.status,null):"")+(e.stream_number?card("Stream Number",e.stream_number,null,null,null):"");
+}}
 function render(){{
- if(!selectedId||!dossiers[selectedId])return;
- const d=dossiers[selectedId];
- document.getElementById("objectTag").textContent=d.tag;
- document.getElementById("objectMeta").textContent=(d.object_type||d.category)+" · "+(d.service||"");
+ const e=entityFor(selectedId);
+ const d=dossierFor(selectedId);
+ if(!e)return;
+ document.getElementById("objectTag").textContent=e.tag||e.id;
+ document.getElementById("objectMeta").textContent=(e.object_type||e.category)+" · "+(e.service||"");
  renderTabs();
  let html="";
  if(activeTab==="overview"){{
-   html=card("Object ID",d.object_id,null,null,null)+card("Type",d.object_type||d.category,null,null,null)+card("Service",d.service||"—",null,null,null);
+   html=renderLineOverview(e);
+   if(e.parent_equipment)html+=nodeGroup("Parent Equipment",[e.parent_equipment]);
+   if(e.connected_lines&&e.connected_lines.length)html+=nodeGroup("Connected Lines / Connections",connectedLineRefs(e));
+ }} else if(activeTab==="connections"){{
+   html=renderConnections(e);
  }} else if(activeTab==="design_basis"){{
-   html=(d.design_basis||[]).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No linked Design Basis criteria.</div>';
+   html=d?((d.design_basis||[]).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No linked Design Basis criteria.</div>'):'<div class="empty">Design Basis is inherited through connected equipment/line criteria; no direct object criterion is linked.</div>';
+ }} else if(activeTab==="process"){{
+   if(e.category==="line"||e.category==="connection"){{
+     const lr=lineRecord(e);
+     html=lr?(card(lr.name,lr.value,null,lr.status,lr.provenance)+calculationDetail(lr)):'<div class="empty">No published sizing record for this connection yet.</div>';
+   }} else {{
+     const rows=[...recordsFor(d,"simulation"),...recordsFor(d,"process_calculation")];
+     html=rows.map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)+calculationDetail(x)).join("")||'<div class="empty">No linked Process / Safety records.</div>';
+   }}
+ }} else if(activeTab==="pid"){{
+   html=renderConnections(e);
+   if(e.line_number||e.stream_number)html=renderLineOverview(e)+html;
+   if(d)html+=recordsFor(d,"pid").map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("");
+ }} else if(activeTab==="calculations"){{
+   if(e.category==="line"||e.category==="connection"){{
+     const lr=lineRecord(e);
+     html=lr?(card(lr.name,lr.value,null,lr.status,lr.provenance)+calculationDetail(lr)):'<div class="empty">No detailed calculation is published for this connection.</div>';
+   }} else {{
+     html=recordsFor(d,"process_calculation").map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)+calculationDetail(x)).join("")||'<div class="empty">No direct calculation records for this entity. Connected line calculations are opened by selecting the line itself.</div>';
+   }}
  }} else if(activeTab==="history"){{
-   const all=[];
-   (d.design_basis||[]).forEach(x=>all.push({{name:x.name,value:x.value,unit:x.unit,status:x.status,provenance:x.provenance}}));
-   Object.values(d.records||{{}}).flat().forEach(x=>all.push(x));
-   html=all.map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No provenance records yet.</div>';
+   if(!d){{
+     html=card("Status",e.status||"semantic",null,null,e.record_provenance||null);
+   }} else {{
+     const all=[];
+     (d.design_basis||[]).forEach(x=>all.push({{name:x.name,value:x.value,unit:x.unit,status:x.status,provenance:x.provenance}}));
+     Object.values(d.records||{{}}).flat().filter(x=>!String(x.id||"").startsWith("LINE-")).forEach(x=>all.push(x));
+     html=all.map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No provenance records yet.</div>';
+   }}
  }} else {{
-   const key=domainMap[activeTab];
-   html=recordsFor(d,key).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)).join("")||'<div class="empty">No linked records yet for this discipline.</div>';
+   if(!d){{
+     html='<div class="empty">This connection/entity has no direct record in this discipline.</div>';
+   }} else {{
+     const key=domainMap[activeTab];
+     html=recordsFor(d,key).map(x=>card(x.name,x.value,x.unit,x.status,x.provenance)+calculationDetail(x)).join("")||'<div class="empty">No linked records yet for this discipline.</div>';
+   }}
  }}
  document.getElementById("tabContent").innerHTML=html;
- renderProperties(d);
+ renderProperties();
 }}
 function detailTable(rows){{
  if(!Array.isArray(rows)||!rows.length)return '<div class="empty">No data.</div>';
@@ -510,7 +611,7 @@ function detailList(rows){{
  return '<div class="structured-value">'+rows.map(x=>'<div class="sv-row"><div class="sv-key">'+esc(x.name||x.criterion_id||'Item')+'</div><div class="sv-val">'+formatValue(x.value,x.unit)+'</div></div>').join('')+'</div>';
 }}
 function calculationDetail(record){{
- const d=((record.metadata||{{}}).calculation_detail);
+ const d=((record&&record.metadata)||{{}}).calculation_detail;
  if(!d)return '';
  let h='<div class="detail-section"><h4>Calculation detail</h4>';
  h+='<b>Inputs</b>'+detailList(d.inputs||[]);
@@ -523,29 +624,39 @@ function calculationDetail(record){{
  if(d.method)h+='<div class="detail-record"><b>Method:</b> '+esc(d.method)+'</div>';
  return h+'</div>';
 }}
-function buildDetailedDossier(d){{
- let h='<div class="detail-section"><h4>Identification</h4>'+propertyRow("Object ID",d.object_id,null,null)+propertyRow("Type",d.object_type||d.category,null,null)+propertyRow("Service",d.service||"—",null,null)+'</div>';
- h+='<div class="detail-section"><h4>Design Basis</h4>'+((d.design_basis||[]).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance)).join('')||'<div class="empty">No criteria.</div>')+'</div>';
- Object.entries(d.records||{{}}).forEach(([domain,records])=>{{
-   h+='<div class="detail-section"><h4>'+esc(humanKey(domain))+'</h4>';
-   records.forEach(r=>{{
-     h+='<div class="detail-record"><b>'+esc(r.name)+'</b><div>'+formatValue(r.value,r.unit)+'</div><div class="detail-sub">Status: '+esc(r.status)+' · Source: '+esc(sourceLine(r.provenance))+'</div>'+calculationDetail(r)+'</div>';
+function buildDetailedDossier(d,e){{
+ let h='<div class="detail-section"><h4>Identification</h4>'+propertyRow("Entity ID",e.id,null,null)+propertyRow("Type",e.object_type||e.category,null,null)+propertyRow("Service",e.service||"—",null,null)+'</div>';
+ h+='<div class="detail-section"><h4>Connected Nodes</h4>'+renderConnections(e)+'</div>';
+ if(d){{
+   h+='<div class="detail-section"><h4>Design Basis</h4>'+((d.design_basis||[]).map(x=>propertyRow(x.name,x.value,x.unit,x.provenance)).join('')||'<div class="empty">No direct criteria.</div>')+'</div>';
+   Object.entries(d.records||{{}}).forEach(([domain,records])=>{{
+     const filtered=records.filter(r=>!String(r.id||"").startsWith("LINE-"));
+     if(!filtered.length)return;
+     h+='<div class="detail-section"><h4>'+esc(humanKey(domain))+'</h4>';
+     filtered.forEach(r=>{{
+       h+='<div class="detail-record"><b>'+esc(r.name)+'</b><div>'+formatValue(r.value,r.unit)+'</div><div class="detail-sub">Status: '+esc(r.status)+' · Source: '+esc(sourceLine(r.provenance))+'</div>'+calculationDetail(r)+'</div>';
+     }});
+     h+='</div>';
    }});
-   h+='</div>';
- }});
+ }}
+ const lr=lineRecord(e);
+ if(lr){{
+   h+='<div class="detail-section"><h4>Line / Connection Engineering</h4><div class="detail-record"><b>'+esc(lr.name)+'</b><div>'+formatValue(lr.value,null)+'</div>'+calculationDetail(lr)+'</div></div>';
+ }}
  return h;
 }}
 function openDetailModal(){{
- if(!selectedId||!dossiers[selectedId])return;
- const d=dossiers[selectedId];
- document.getElementById('dialogTitle').textContent=d.tag+' — Detailed View';
- document.getElementById('dialogSub').textContent=(d.object_type||d.category)+' · '+(d.service||'');
- document.getElementById('dialogBody').innerHTML=buildDetailedDossier(d);
+ const e=entityFor(selectedId);
+ if(!e)return;
+ const d=dossierFor(selectedId);
+ document.getElementById('dialogTitle').textContent=(e.tag||e.id)+' — Detailed View';
+ document.getElementById('dialogSub').textContent=(e.object_type||e.category)+' · '+(e.service||'');
+ document.getElementById('dialogBody').innerHTML=buildDetailedDossier(d,e);
  document.getElementById('detailDialog').showModal();
 }}
 function popOutDetail(){{
  if(!selectedId)return;
- window.open('/object/'+encodeURIComponent(selectedId)+'/detail','_blank','noopener');
+ window.open('/entity/'+encodeURIComponent(selectedId)+'/detail','_blank','noopener');
 }}
 function openTab(tab){{activeTab=tab;render();}}
 function setInspectorMode(mode){{
@@ -558,10 +669,11 @@ function setInspectorMode(mode){{
  props.style.display=mode==="properties"?"block":"none";
  tabsBtn.classList.toggle("active",mode==="tabs");
  propsBtn.classList.toggle("active",mode==="properties");
- if(selectedId&&dossiers[selectedId])renderProperties(dossiers[selectedId]);
+ if(selectedId)renderProperties();
 }}
-function selectObject(id){{selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);}}
+function selectEntity(id){{if(!entityFor(id))return;selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);}}
+function selectObject(id){{selectEntity(id);}}
 renderPublishBar();
-if(dossiers["EQ-V101"])selectObject("EQ-V101");
+if(entities["EQ-V101"])selectEntity("EQ-V101");
 </script>
 </body></html>"""
