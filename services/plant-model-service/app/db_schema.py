@@ -5,13 +5,12 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
-    Boolean,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     String,
-    Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -53,6 +52,7 @@ class DesignBasisCriterionRow(Base):
 
 class CriterionObjectLinkRow(Base):
     __tablename__ = "criterion_object_links"
+    __table_args__ = (UniqueConstraint("criterion_id", "object_id", name="uq_criterion_object"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     criterion_id: Mapped[str] = mapped_column(ForeignKey("design_basis_criteria.id"), index=True)
     object_id: Mapped[str] = mapped_column(String(100), index=True)
@@ -79,10 +79,10 @@ class SimulationCaseRow(Base):
 
 
 class EquipmentRow(Base):
+    """Canonical PFD equipment object; one row per plant object, not per case."""
     __tablename__ = "equipment"
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
-    simulation_case_id: Mapped[str | None] = mapped_column(ForeignKey("simulation_cases.id"), nullable=True, index=True)
     simulation_object_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     tag: Mapped[str] = mapped_column(String(80), index=True)
     equipment_type: Mapped[str] = mapped_column(String(100))
@@ -90,13 +90,21 @@ class EquipmentRow(Base):
 
 
 class StreamRow(Base):
+    """Canonical PFD stream topology; thermodynamic values are stored by case."""
     __tablename__ = "streams"
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), index=True)
-    simulation_case_id: Mapped[str] = mapped_column(ForeignKey("simulation_cases.id"), index=True)
     simulation_stream_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     source_equipment_id: Mapped[str | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)
     destination_equipment_id: Mapped[str | None] = mapped_column(ForeignKey("equipment.id"), nullable=True, index=True)
+
+
+class StreamCaseResultRow(Base):
+    __tablename__ = "stream_case_results"
+    __table_args__ = (UniqueConstraint("stream_id", "simulation_case_id", name="uq_stream_case"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stream_id: Mapped[str] = mapped_column(ForeignKey("streams.id"), index=True)
+    simulation_case_id: Mapped[str] = mapped_column(ForeignKey("simulation_cases.id"), index=True)
     phase: Mapped[str | None] = mapped_column(String(40), nullable=True)
     mass_flow: Mapped[float | None] = mapped_column(Float, nullable=True)
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -109,8 +117,9 @@ class StreamRow(Base):
 
 class StreamComponentRow(Base):
     __tablename__ = "stream_components"
+    __table_args__ = (UniqueConstraint("stream_case_result_id", "component", name="uq_stream_component_case"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    stream_id: Mapped[str] = mapped_column(ForeignKey("streams.id"), index=True)
+    stream_case_result_id: Mapped[int] = mapped_column(ForeignKey("stream_case_results.id"), index=True)
     component: Mapped[str] = mapped_column(String(100))
     mole_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
     mass_fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -131,6 +140,14 @@ class EngineeringRecordRow(Base):
 
 class RecordObjectLinkRow(Base):
     __tablename__ = "record_object_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "engineering_record_id",
+            "object_id",
+            "relationship",
+            name="uq_record_object_relationship",
+        ),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     engineering_record_id: Mapped[str] = mapped_column(ForeignKey("engineering_records.id"), index=True)
     object_id: Mapped[str] = mapped_column(String(100), index=True)
