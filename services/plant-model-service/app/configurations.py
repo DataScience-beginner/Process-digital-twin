@@ -343,9 +343,12 @@ def standard_vessel_module(vessel: Equipment) -> ModuleBuild:
 
 
 def standard_pump_module(
-    *, vessel: Equipment, liquid_control_valve: Valve
+    *,
+    vessel: Equipment,
+    liquid_control_valve: Valve,
+    pump: Equipment | None = None,
 ) -> ModuleBuild:
-    pump = standard_centrifugal_pump(object_id="EQ-P101", tag="P-101")
+    pump = pump or standard_centrifugal_pump(object_id="EQ-P101", tag="P-101")
     suction_n = equipment_nozzle(
         parent=pump, object_id="NOZ-P101-SUC", tag="P-101/N-SUC",
         service="Pump suction nozzle", direction=PortDirection.IN,
