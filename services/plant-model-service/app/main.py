@@ -16,6 +16,7 @@ from .skeleton_renderer import render_drafter_skeleton_html
 from .persistence import (
     database_summary,
     ensure_demo_seeded,
+    load_approved_configurations,
     load_configuration_match_facts,
     load_object_dossier,
 )
@@ -95,9 +96,11 @@ def configuration_match(design_case_id: str):
     engine = _app_engine()
     with Session(engine) as session:
         facts = load_configuration_match_facts(session)
+        definitions = load_approved_configurations(session)
     return match_configuration(
         publication,
         design_basis_facts=facts,
+        definitions=definitions,
     ).model_dump(mode="json")
 
 
