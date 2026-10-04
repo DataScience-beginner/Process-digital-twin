@@ -62,3 +62,46 @@ def test_sidebar_exposes_provenance_labels():
     html = _render_db_view()
     assert "Source:" in html
     assert "source_id" in html
+
+
+
+def test_connected_pid_routes_remain_present_in_object_view():
+    html = _render_db_view()
+    for role in [
+        "psv_relief",
+        "vessel_vent",
+        "vessel_drain",
+        "pressure_to_pt",
+        "pressure_to_pi",
+        "level_to_lt",
+        "level_to_li",
+        "pump_suction_pi",
+        "pump_discharge_pi",
+        "level_signal",
+        "level_control_signal",
+        "flow_signal",
+        "flow_control_signal",
+    ]:
+        assert f'data-route-role="{role}"' in html
+
+
+def test_sidebar_supports_tab_and_properties_modes():
+    html = _render_db_view()
+    assert "Tabs" in html
+    assert "Properties" in html
+    assert "property-group-title" in html
+    assert 'setInspectorMode(\'properties\')' in html
+    for category in [
+        "Identification",
+        "Design Basis",
+        "Process / Simulation",
+        "Calculations",
+        "P&ID",
+        "Instrumentation",
+        "Mechanical",
+        "Electrical",
+        "Cost",
+        "EPC / Vendor",
+        "Operations",
+    ]:
+        assert category in html
