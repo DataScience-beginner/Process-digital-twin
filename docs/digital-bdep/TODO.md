@@ -299,6 +299,81 @@ Goal: make the Digital BDEP calculation viewer feel like an in-house engineering
 - [x] Publication / completion summary
 - [x] Export summaries to HTML / CSV / PDF
 
+## MVP 0.15 — Engineering Revision, Review & Client Issue Control
+Goal: support many engineers and autonomous agents working simultaneously while preserving a controlled approved engineering baseline and exposing only formally issued revisions to the client.
+
+### Engineering nomenclature — use in UI/API/domain language
+Use engineering / digital-plant terminology in user-facing features. Git-like mechanics may be used internally, but do not expose software-development jargon as the primary engineering language.
+
+- **Approved Engineering Baseline** — controlled internal reference state used for new engineering work
+- **Engineering Change Package (ECP)** — isolated proposed engineering change against a known baseline
+- **Working Revision** — current editable state inside an ECP
+- **Engineering Change Record** — immutable record of one proposed semantic change
+- **Engineering Change Comparison** — semantic before/after comparison
+- **Engineering Conflict** — incompatible simultaneous changes requiring engineering resolution
+- **Refresh Against Baseline** — update an ECP when its input/reference versions are no longer current
+- **Engineering Review Package** — submitted ECP presented to checkers/approvers
+- **Discipline Check** — maker/checker technical verification
+- **Affected-Discipline Review** — required review created from dependency/impact analysis
+- **Engineering Approval Gate** — final internal authorization before integration
+- **Integration Queue** — serialized queue that revalidates approved ECPs before incorporation
+- **Integrate into Approved Baseline** — controlled incorporation of an approved ECP
+- **Release Candidate** — frozen candidate snapshot undergoing issue checks
+- **Client Issue** — immutable formally released BDEP revision visible to the client
+- **Superseded Client Issue** — older released revision retained for traceability
+- **Affected / Update Required** — downstream engineering item invalidated by an upstream change
+- **Stale Input** — calculation or record created from an older source-object/property version
+- **Client Comment / Client Action** — client feedback tied to the exact released object/drawing/revision
+
+### Revision-control foundation
+- [ ] Persistent Approved Engineering Baseline
+- [ ] Persistent Engineering Change Package
+- [ ] Property/object-level Engineering Change Records
+- [ ] Store base object/property revision used by each change
+- [ ] Detect direct semantic Engineering Conflicts
+- [ ] Detect Stale Input / Refresh Against Baseline requirement
+- [ ] Support many concurrent ECPs without project-wide hard locking
+- [ ] Soft work reservations / awareness for engineers and agents
+- [ ] Immutable audit events for status transitions
+
+### Review and approval
+- [ ] Maker cannot approve own engineering change
+- [ ] Configurable Discipline Check requirements
+- [ ] Configurable Affected-Discipline Review requirements
+- [ ] Engineering Approval Gate
+- [ ] Approval stores reviewed content hash / revision
+- [ ] Material change after approval invalidates prior approval
+- [ ] Explicit statuses: Working / In Review / Checked / Approved / Conflict / Stale Input / Affected / Update Required / Blocked
+
+### Integration queue
+- [ ] Approved ECP enters Integration Queue
+- [ ] Revalidate ECP against latest Approved Engineering Baseline
+- [ ] Re-run deterministic engineering checks before integration
+- [ ] Re-run dependency / impact checks before integration
+- [ ] Block integration on conflicts or stale governed inputs
+- [ ] Create new immutable Approved Engineering Baseline revision after successful integration
+
+### Release candidate and client issue
+- [ ] Create Release Candidate from one exact Approved Engineering Baseline
+- [ ] Freeze model, criteria, design cases, calculations, drawings, summaries and service versions in release manifest
+- [ ] Discipline Leads confirm release content
+- [ ] Project Engineering Manager approval
+- [ ] QA / Document Control issue check
+- [ ] Authorized release approval
+- [ ] Create immutable Client Issue
+- [ ] Client account sees **released Client Issues only**
+- [ ] Client cannot see ECPs, working revisions, internal review comments, conflicts, rejected changes or release candidates
+- [ ] Client comments are anchored to released object + drawing + Client Issue revision
+- [ ] Client comment may create a new internal action/ECP; it never edits the released baseline directly
+
+### Viewer integration
+- [ ] Internal header: Approved Baseline / Active ECP / Working Revision
+- [ ] Compare mode: Approved vs Proposed
+- [ ] Impact mode: Changed / Affected / Update Required / Conflict
+- [ ] Object History / Revision tab in right inspector
+- [ ] Canvas-safe highlighting without altering engineering geometry
+- [ ] Client viewer mode is read-only and bound to a Client Issue snapshot
+
 ## MVP 1.0 — Vendor / EPC Information Thread
 - [ ] Vendor enquiry package inputs
 - [ ] Vendor document register
