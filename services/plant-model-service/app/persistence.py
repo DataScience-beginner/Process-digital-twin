@@ -344,3 +344,13 @@ def ensure_demo_seeded(engine) -> None:
         existing = session.scalar(select(ProjectRow.id).limit(1))
     if existing is None:
         seed_demo_database(engine)
+
+
+
+def load_configuration_match_facts(session: Session) -> dict[str, str | float | int | bool]:
+    """Return approved Design Basis facts used by deterministic configuration matching."""
+    row = session.get(DesignBasisCriterionRow, "DBC-PUMP-MIN-FLOW")
+    facts: dict[str, str | float | int | bool] = {}
+    if row is not None and row.status == "approved":
+        facts["pump_minimum_flow_required"] = row.value_json
+    return facts
