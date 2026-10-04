@@ -105,17 +105,23 @@ Every displayed value must show where it came from. ✅ Implemented for the firs
 - [x] Configuration Match viewer shows PFD input, mapping, applicability and permitted modules
 
 ## MVP 0.8 — Engineering Topology Compiler
-- [ ] Expand PFD topology into P&ID semantic topology
+- [x] Expand PFD topology into P&ID semantic topology
 - [ ] Add approved modules:
-  - vessel level control
-  - pressure indication
-  - vessel protection
-  - vent / drain
-  - pump suction arrangement
-  - pump discharge arrangement
-  - pump minimum-flow recycle
-- [ ] Generate the current V-101 / P-101 P&ID from configuration data instead of manual demo code
-- [ ] Validate applicability before compilation
+  - [x] vessel level control
+  - [x] pressure indication
+  - [x] vessel protection
+  - [x] vent / drain
+  - [x] pump suction arrangement
+  - [x] pump discharge arrangement
+  - [x] pump minimum-flow recycle
+- [x] Generate the current V-101 / P-101 P&ID from configuration data instead of manual demo code
+- [x] Validate applicability before compilation
+- [x] Preserve PFD stream → P&ID connection provenance
+- [x] Block KNOWN_VARIANT / UNKNOWN before P&ID compilation
+- [x] Prove semantic equivalence against approved reference graph
+- [x] Drive Engineering View and Graph View from compiled topology
+- [x] Verify compiled graph passes the connected drafter workflow
+- [x] Add compiler trace viewer
 
 ## MVP 0.9 — Change / Impact Intelligence
 - [ ] Criterion change -> affected objects
