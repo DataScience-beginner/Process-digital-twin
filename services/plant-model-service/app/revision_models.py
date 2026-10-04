@@ -160,3 +160,10 @@ class ClientIssue(BaseModel):
     manifest: dict[str, Any] = Field(default_factory=dict)
     issued_at: datetime | None = None
     client_visible: bool = True
+
+
+
+class EngineeringReviewAction(BaseModel):
+    reviewer_id: str
+    decision: EngineeringReviewStatus
+    comments: str | None = None
