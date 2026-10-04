@@ -368,6 +368,7 @@ def build_inspection_graph(
             "object_type": spec["entity_type"],
             "service": spec["service"],
             "route_role": spec["role"],
+            "record_id": spec.get("record_id"),
             "semantic_edge_ids": route.semantic_edge_ids,
             "path": path_refs,
             "from": path_refs[0] if path_refs else None,
