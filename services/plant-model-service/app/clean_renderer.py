@@ -549,6 +549,17 @@ const domainMap={{
 let selectedId=null;
 let activeTab="overview";
 let inspectorMode="tabs";
+let activeCanvas="pid1";
+let draftCounter=0;
+let draftConnectionCounter=0;
+const draftObjects=[];
+const draftConnections=[];
+const draftActions=[];
+let connectorMode=false;
+let connectorSource=null;
+let movingDraft=null;
+let autoSnap=true;
+const svgNS="http://www.w3.org/2000/svg";
 
 function esc(v){{
  return String(v ?? "—").replace(/[&<>"']/g,m=>({{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}}[m]));
