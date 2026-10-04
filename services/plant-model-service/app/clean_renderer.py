@@ -286,10 +286,10 @@ const publishDefs=[
  ["design_basis","Publish Design Basis"],
  ["simulation","Publish Simulation"],
  ["configuration","Select Configuration"],
- ["process","Publish Process Data"],
- ["instrumentation","Publish Instrumentation"],
- ["mechanical","Publish Mechanical"],
- ["costing","Publish Costing"]
+ ["process","Publish Process / Safety"],
+ ["instrumentation","Publish Instrumentation / DCS"],
+ ["mechanical","Publish Technical / Mechanical"],
+ ["costing","Publish Cost Estimate"]
 ];
 function stageState(id){{
  return publicationStages.find(x=>x.stage===id)||{{status:"not_published"}};
@@ -334,9 +334,9 @@ const tabDefs=[
  ["pid","P&ID"],
  ["calculations","Calculations"],
  ["instrumentation","Instrumentation"],
- ["mechanical","Mechanical"],
+ ["mechanical","Technical / Mechanical"],
  ["electrical","Electrical"],
- ["cost","Cost"],
+ ["cost","Cost Estimate"],
  ["epc_vendor","EPC / Vendor"],
  ["operations","Operations"],
  ["history","History"]
@@ -412,9 +412,9 @@ function renderProperties(d){{
    ["Calculations","process_calculation"],
    ["P&ID","pid"],
    ["Instrumentation","instrumentation"],
-   ["Mechanical","mechanical"],
+   ["Technical / Mechanical","mechanical"],
    ["Electrical","electrical"],
-   ["Cost","cost"],
+   ["Cost Estimate","cost"],
    ["EPC / Vendor","epc_vendor"],
    ["Operations","operations"]
  ];
