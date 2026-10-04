@@ -34,6 +34,7 @@ from .skeleton_renderer import render_drafter_skeleton_html
 from .summaries import build_bdep_summaries
 from .summaries_renderer import render_summaries_html
 from .persistence import (
+    PROJECT_ID,
     database_summary,
     ensure_demo_seeded,
     load_approved_configurations,
@@ -45,6 +46,19 @@ from .topology_compiler import compile_engineering_topology
 from .topology_compile_renderer import render_compilation_trace_html
 from .simulation import publish_demo_simulation
 from .object_detail_renderer import render_object_detail_html
+from .revision_control import (
+    RevisionControlBlocked,
+    client_issue_catalog,
+    load_change_package,
+    queue_for_integration,
+    record_engineering_review,
+    revision_control_summary,
+)
+from .revision_control_renderer import (
+    render_client_issue_portal_html,
+    render_revision_control_html,
+)
+from .revision_models import EngineeringReviewAction
 from .publishing import (
     PublishStage,
     PublicationBlocked,
@@ -107,6 +121,91 @@ def engineering_view():
         dossiers,
         publication_stages=stages,
     )
+
+
+@app.get("/api/revision-control")
+def get_revision_control_summary():
+    engine = _app_engine()
+    with Session(engine) as session:
+        return revision_control_summary(session, PROJECT_ID)
+
+
+@app.get("/api/engineering-change-packages/{package_id}")
+def get_engineering_change_package(package_id: str):
+    engine = _app_engine()
+    with Session(engine) as session:
+        try:
+            return load_change_package(session, package_id).model_dump(mode="json")
+        except KeyError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown Engineering Change Package: {package_id}",
+            ) from exc
+
+
+@app.post("/api/engineering-review/{review_requirement_id}")
+def submit_engineering_review(
+    review_requirement_id: int,
+    action: EngineeringReviewAction,
+):
+    engine = _app_engine()
+    try:
+        with Session(engine) as session:
+            return record_engineering_review(
+                session,
+                review_requirement_id=review_requirement_id,
+                reviewer_id=action.reviewer_id,
+                decision=action.decision,
+                comments=action.comments,
+            ).model_dump(mode="json")
+    except RevisionControlBlocked as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/integration-queue/{package_id}")
+def add_to_integration_queue(package_id: str):
+    engine = _app_engine()
+    try:
+        with Session(engine) as session:
+            return queue_for_integration(
+                session,
+                package_id,
+            ).model_dump(mode="json")
+    except (RevisionControlBlocked, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/client/issues")
+def get_client_issues():
+    engine = _app_engine()
+    with Session(engine) as session:
+        return [
+            issue.model_dump(mode="json")
+            for issue in client_issue_catalog(session, PROJECT_ID)
+        ]
+
+
+@app.get("/revision-control", response_class=HTMLResponse)
+def revision_control_view():
+    engine = _app_engine()
+    with Session(engine) as session:
+        summary = revision_control_summary(session, PROJECT_ID)
+        packages = [
+            load_change_package(session, item["id"])
+            for item in summary["engineering_change_packages"]
+        ]
+    return render_revision_control_html(
+        summary=summary,
+        packages=packages,
+    )
+
+
+@app.get("/client", response_class=HTMLResponse)
+def client_issue_portal():
+    engine = _app_engine()
+    with Session(engine) as session:
+        issues = client_issue_catalog(session, PROJECT_ID)
+    return render_client_issue_portal_html(issues)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
