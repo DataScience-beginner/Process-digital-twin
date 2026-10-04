@@ -382,6 +382,7 @@ ul{{font-size:9px;line-height:1.5;margin:0;padding-left:18px}}
 <a href="/export/workspace/{html.escape(entity_id)}.pdf">PDF</a>
 <a href="/export/dexpi.xml">DEXPI XML</a>
 <a href="/export/visio.vdx">Visio VDX</a>
+<a href="/export/drawing.svg">SVG</a>
 <a href="/export/drawing.dxf">CAD DXF</a>
 <a href="/export/drawing.dwg">DWG*</a>
 <button onclick="window.print()">Print</button>
