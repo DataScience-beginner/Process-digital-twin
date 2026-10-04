@@ -197,34 +197,44 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 {''.join(_selectable_route_svg(route) for route in plan.routes)}
 
 <!-- Separator -->
-<g class="selectable" data-object-id="EQ-V101" onclick="selectObject('EQ-V101')">
+<g class="selectable" data-object-id="EQ-V101" onclick="selectEntity('EQ-V101')">
 <path class="sym" d="M184 233 Q220 207 256 233 L256 367 Q220 393 184 367 Z"/>
 <line class="sym" x1="220" y1="380" x2="220" y2="405"/>
 <text x="220" y="304" text-anchor="middle" class="tag">V-101</text>
 </g>
 
 <!-- Protection -->
-<g class="selectable" data-object-id="VLV-PSV101" onclick="selectObject('VLV-PSV101')">
+<g class="selectable" data-object-id="VLV-PSV101" onclick="selectEntity('VLV-PSV101')">
 <path class="sym" d="M223 166 L247 166 L235 146 Z"/>
 <line class="sym" x1="235" y1="146" x2="235" y2="128"/>
 <line class="sym" x1="227" y1="128" x2="243" y2="128"/>
 <text x="262" y="151" class="txt">PSV-101</text>
 </g>
+<g class="selectable" data-object-id="BOUND-RELIEF" onclick="selectEntity('BOUND-RELIEF')">
 <path class="sym" d="M222 73 H242 L250 80 L242 87 H222 Z"/>
+</g>
+<g class="selectable" data-object-id="VLV-VENT101" onclick="selectEntity('VLV-VENT101')">
 <path class="sym" d="M128 139 L145 150 L128 161 Z M162 139 L145 150 L162 161 Z"/>
+</g>
+<g class="selectable" data-object-id="BOUND-VENT" onclick="selectEntity('BOUND-VENT')">
 <path class="sym" d="M68 143 H88 L96 150 L88 157 H68 Z"/>
+</g>
+<g class="selectable" data-object-id="VLV-DRAIN101" onclick="selectEntity('VLV-DRAIN101')">
 <path class="sym" d="M184 503 L195 520 L206 503 Z M184 537 L195 520 L206 537 Z"/>
+</g>
+<g class="selectable" data-object-id="BOUND-DRAIN" onclick="selectEntity('BOUND-DRAIN')">
 <path class="sym" d="M188 562 H202 L209 569 L202 576 H188 Z"/>
+</g>
 
 <!-- Vessel instruments -->
-<g class="selectable" data-object-id="INS-PT101" onclick="selectObject('INS-PT101')">{_bubble(105,255,"PT","PT-101")}</g>
-{_bubble(105,310,"PI","PI-101")}
-<g class="selectable" data-object-id="INS-LT101" onclick="selectObject('INS-LT101')">{_bubble(315,290,"LT","LT-101")}</g>
-{_bubble(315,340,"LI","LI-101")}
-<g class="selectable" data-object-id="INS-LIC101" onclick="selectObject('INS-LIC101')">{_bubble(415,205,"LIC","LIC-101")}</g>
+<g class="selectable" data-object-id="INS-PT101" onclick="selectEntity('INS-PT101')">{_bubble(105,255,"PT","PT-101")}</g>
+<g class="selectable" data-object-id="INS-PI101" onclick="selectEntity('INS-PI101')">{_bubble(105,310,"PI","PI-101")}</g>
+<g class="selectable" data-object-id="INS-LT101" onclick="selectEntity('INS-LT101')">{_bubble(315,290,"LT","LT-101")}</g>
+<g class="selectable" data-object-id="INS-LI101" onclick="selectEntity('INS-LI101')">{_bubble(315,340,"LI","LI-101")}</g>
+<g class="selectable" data-object-id="INS-LIC101" onclick="selectEntity('INS-LIC101')">{_bubble(415,205,"LIC","LIC-101")}</g>
 
 <!-- LCV -->
-<g class="selectable" data-object-id="VLV-LCV101" onclick="selectObject('VLV-LCV101')">
+<g class="selectable" data-object-id="VLV-LCV101" onclick="selectEntity('VLV-LCV101')">
 <path class="sym" d="M376 419 L395 430 L376 441 Z M414 419 L395 430 L414 441 Z"/>
 <line class="sym" x1="395" y1="430" x2="395" y2="407"/>
 <path class="sym" d="M383 407 Q395 390 407 407"/>
@@ -233,32 +243,42 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 </g>
 
 <!-- Pump suction / pump -->
+<g class="selectable" data-object-id="VLV-XV101" onclick="selectEntity('VLV-XV101')">
 <path class="sym" d="M518 419 L535 430 L518 441 Z M552 419 L535 430 L552 441 Z"/>
 <text x="535" y="458" text-anchor="middle" class="txt">XV-101</text>
-<g class="selectable" data-object-id="EQ-P101" onclick="selectObject('EQ-P101')">
+</g>
+<g class="selectable" data-object-id="EQ-P101" onclick="selectEntity('EQ-P101')">
 <circle class="sym" cx="690" cy="430" r="26"/>
 <path class="sym" d="M668 430 C688 408 712 412 716 430 C700 433 692 442 684 450"/>
 <text x="690" y="474" text-anchor="middle" class="tag">P-101</text>
 </g>
 
 <!-- Pump pressure -->
-{_bubble(610,360,"PI","PI-101S")}
-{_bubble(730,360,"PI","PI-101D")}
+<g class="selectable" data-object-id="INS-PI101S" onclick="selectEntity('INS-PI101S')">{_bubble(610,360,"PI","PI-101S")}</g>
+<g class="selectable" data-object-id="INS-PI101D" onclick="selectEntity('INS-PI101D')">{_bubble(730,360,"PI","PI-101D")}</g>
 
 <!-- Discharge -->
-<circle cx="785" cy="430" r="3" fill="#000"/>
+<g class="selectable" data-object-id="JUNC-P101-DIS" onclick="selectEntity('JUNC-P101-DIS')">
+<circle cx="785" cy="430" r="5" fill="#000"/>
+</g>
+<g class="selectable" data-object-id="VLV-NRV101" onclick="selectEntity('VLV-NRV101')">
 <path class="sym" d="M848 420 L872 430 L848 440 Z"/>
 <line class="sym" x1="875" y1="418" x2="875" y2="442"/>
 <text x="863" y="458" text-anchor="middle" class="txt">NRV-101</text>
+</g>
+<g class="selectable" data-object-id="VLV-XV102" onclick="selectEntity('VLV-XV102')">
 <path class="sym" d="M938 419 L955 430 L938 441 Z M972 419 L955 430 L972 441 Z"/>
 <text x="955" y="458" text-anchor="middle" class="txt">XV-102</text>
+</g>
+<g class="selectable" data-object-id="BOUND-PRODUCT" onclick="selectEntity('BOUND-PRODUCT')">
 <path class="sym" d="M1046 423 H1066 L1076 430 L1066 437 H1046 Z"/>
+</g>
 
 <!-- Minimum-flow control -->
-<g class="selectable" data-object-id="INS-FT101" onclick="selectObject('INS-FT101')">{_bubble(700,215,"FT","FT-101")}</g>
+<g class="selectable" data-object-id="INS-FT101" onclick="selectEntity('INS-FT101')">{_bubble(700,215,"FT","FT-101")}</g>
 <line class="impulse" x1="700" y1="229" x2="700" y2="255"/>
-<g class="selectable" data-object-id="INS-FIC101" onclick="selectObject('INS-FIC101')">{_bubble(820,180,"FIC","FIC-101")}</g>
-<g class="selectable" data-object-id="VLV-FCV101" onclick="selectObject('VLV-FCV101')">
+<g class="selectable" data-object-id="INS-FIC101" onclick="selectEntity('INS-FIC101')">{_bubble(820,180,"FIC","FIC-101")}</g>
+<g class="selectable" data-object-id="VLV-FCV101" onclick="selectEntity('VLV-FCV101')">
 <path class="sym" d="M501 244 L520 255 L501 266 Z M539 244 L520 255 L539 266 Z"/>
 <line class="sym" x1="520" y1="255" x2="520" y2="232"/>
 <path class="sym" d="M508 232 Q520 215 532 232"/>
@@ -280,7 +300,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <aside class="side">
 <div class="object-head">
 <h3 id="objectTag">Digital BDEP Object</h3>
-<div id="objectMeta" class="muted">Click equipment, PSV, control valves or key instruments</div>
+<div id="objectMeta" class="muted">Click any visible equipment, valve, instrument, boundary or line</div>
 <div class="object-actions">
 <button class="detail-btn" onclick="openDetailModal()">↗ Detailed View</button>
 <button class="detail-btn" onclick="popOutDetail()">⧉ Pop out</button>
