@@ -829,6 +829,7 @@ def _psv_demo_vapor_sizing(session: Session) -> dict[str, Any]:
         "required_area_in2": required_area_in2,
         "selected_orifice": selected_letter,
         "selected_area_in2": selected_area_in2,
+        "selected_area_m2": selected_area_m2,
         "selected_area_mm2": selected_area_in2 * 645.16,
         "selected_capacity_tph": selected_capacity_tph,
         "area_utilization_pct": area_utilization_pct,
@@ -1613,7 +1614,7 @@ def publish_process(session: Session) -> PublicationResult:
             "vessel_holdup_volume_m3": round(n["holdup_volume_m3"], 3),
             "pump_rated_flow_tph": round(n["pump_rated_flow_tph"], 3),
             "pump_rated_head_m": round(n["pump_rated_head_m"], 3),
-            "psv_basis": "published; final relief sizing service pending qualification",
+            "psv_basis": f'demo orifice {psv["selected_orifice"]} selected; qualified relief approval and remaining scenarios gated',
             "line_numbers": [line["line_number"] for line in line_records],
         },
     )
