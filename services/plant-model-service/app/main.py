@@ -1,6 +1,6 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -25,8 +25,15 @@ from .thread_service import DESIGN_CASES, build_object_dossier
 from .topology_compiler import compile_engineering_topology
 from .topology_compile_renderer import render_compilation_trace_html
 from .simulation import publish_demo_simulation
+from .publishing import (
+    PublishStage,
+    PublicationBlocked,
+    publication_status,
+    publish_all,
+    publish_stage,
+)
 
-app = FastAPI(title="Digital BDEP Prototype", version="0.8.0")
+app = FastAPI(title="Digital BDEP Prototype", version="0.9.0")
 
 
 def _compile_case(design_case_id: str = "CASE-NORMAL"):
@@ -72,7 +79,14 @@ def engineering_view():
             object_id: load_object_dossier(session, object_id)
             for object_id in ["EQ-V101", "EQ-P101", "VLV-FCV101"]
         }
-    return render_clean_pid_html(model, plan, cleanup, dossiers)
+        stages = publication_status(session)
+    return render_clean_pid_html(
+        model,
+        plan,
+        cleanup,
+        dossiers,
+        publication_stages=stages,
+    )
 
 
 @app.get("/engineering-05b", response_class=HTMLResponse)
@@ -165,6 +179,40 @@ def db_summary():
     engine = _app_engine()
     with Session(engine) as session:
         return database_summary(session)
+
+
+@app.get("/api/publication-status")
+def get_publication_status():
+    engine = _app_engine()
+    with Session(engine) as session:
+        return [
+            item.model_dump(mode="json")
+            for item in publication_status(session)
+        ]
+
+
+@app.post("/api/publish/{stage}")
+def publish_one_stage(stage: PublishStage):
+    engine = _app_engine()
+    try:
+        with Session(engine) as session:
+            result = publish_stage(session, stage)
+            return result.model_dump(mode="json")
+    except PublicationBlocked as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/publish-all")
+def publish_everything():
+    engine = _app_engine()
+    try:
+        with Session(engine) as session:
+            return [
+                result.model_dump(mode="json")
+                for result in publish_all(session)
+            ]
+    except PublicationBlocked as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/graph", response_class=HTMLResponse)
