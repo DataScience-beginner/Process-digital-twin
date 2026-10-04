@@ -1,26 +1,27 @@
-# Plant Model Service
+# Digital BDEP Plant Model Service
 
-Python/Pydantic reference implementation of the canonical Digital BDEP plant model.
+Python-only reference implementation for the Digital BDEP platform.
 
-## Why a separate service?
-The repository already has a .NET equipment microservice. This service is intentionally small and domain-focused so the canonical process-engineering model can be proven before choosing the final persistence/API integration pattern.
+## MVP 0.1
+- Pydantic canonical plant model
+- Standard vertical-separator factory
+- Standard centrifugal-pump factory
+- Explicit port-to-port connectivity
+- Validation of unknown equipment, unknown ports and connection direction
+- FastAPI endpoint exposing the plant model as JSON
+- Small clickable HTML/SVG concept viewer
 
-## Run tests
+## Run
 ```bash
 cd services/plant-model-service
 python -m pip install -e ".[dev]"
 pytest
+uvicorn app.main:app --reload --port 8765
 ```
 
-## Validate the example
-```bash
-python - <<'PY'
-from pathlib import Path
-from app.models import PlantModel
+Open:
+- Viewer: http://127.0.0.1:8765/
+- JSON model: http://127.0.0.1:8765/api/plant
 
-model = PlantModel.model_validate_json(
-    Path("examples/vessel_pump.json").read_text()
-)
-print(model.model_dump_json(indent=2))
-PY
-```
+## Architecture rule
+The plant model is the engineering master. Drawing coordinates and layout are view data only and must not be added to the canonical equipment/connectivity model.
