@@ -243,7 +243,7 @@ def build_drafter_instrumented(model: PlantModel) -> DrafterPlan:
         DraftRoute(
             semantic_edge_ids=["C-PSV-01", "C-PSV-02"],
             role="psv_relief",
-            points=[_p(235, 220), _p(235, 166), _p(235, 124), _p(235, 80)],
+            points=[_p(235, 222), _p(235, 166), _p(235, 124), _p(235, 80)],
         ),
         DraftRoute(
             semantic_edge_ids=["C-VENT-01", "C-VENT-02"],
@@ -253,18 +253,28 @@ def build_drafter_instrumented(model: PlantModel) -> DrafterPlan:
         DraftRoute(
             semantic_edge_ids=["C-DRAIN-01", "C-DRAIN-02"],
             role="vessel_drain",
-            points=[_p(195, 380), _p(195, 503), _p(195, 537), _p(195, 562)],
+            points=[_p(195, 374), _p(195, 503), _p(195, 537), _p(195, 562)],
         ),
         # Thin process/instrument take-offs.
         DraftRoute(
-            semantic_edge_ids=["A-PT101", "A-PI101"],
-            role="pressure_takeoff",
+            semantic_edge_ids=["A-PT101"],
+            role="pressure_to_pt",
+            points=[_p(184, 255), _p(120, 255)],
+        ),
+        DraftRoute(
+            semantic_edge_ids=["A-PI101"],
+            role="pressure_to_pi",
             points=[_p(184, 255), _p(150, 255), _p(150, 310), _p(120, 310)],
         ),
         DraftRoute(
-            semantic_edge_ids=["A-LT101", "A-LI101"],
-            role="level_takeoff",
-            points=[_p(256, 290), _p(300, 290), _p(300, 340)],
+            semantic_edge_ids=["A-LT101"],
+            role="level_to_lt",
+            points=[_p(256, 290), _p(300, 290)],
+        ),
+        DraftRoute(
+            semantic_edge_ids=["A-LI101"],
+            role="level_to_li",
+            points=[_p(256, 290), _p(280, 290), _p(280, 340), _p(300, 340)],
         ),
         DraftRoute(
             semantic_edge_ids=["A-PI-SUC"],
