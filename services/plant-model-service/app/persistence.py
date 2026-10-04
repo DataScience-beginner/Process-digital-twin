@@ -4,6 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .configurations import demo_integrated_configuration_model
+from .config_matcher import APPROVED_CONFIGURATIONS, ConfigurationDefinition
 from .db_schema import (
     CriterionObjectLinkRow,
     DesignBasisCriterionRow,
@@ -11,6 +12,7 @@ from .db_schema import (
     DesignCaseRow,
     EngineeringRecordRow,
     EquipmentRow,
+    ProcessConfigurationRow,
     ProjectRow,
     RecordObjectLinkRow,
     SimulationCaseRow,
@@ -44,6 +46,7 @@ def _clear_demo(session: Session) -> None:
     for table in [
         RecordObjectLinkRow,
         EngineeringRecordRow,
+        ProcessConfigurationRow,
         StreamComponentRow,
         StreamCaseResultRow,
         StreamRow,
@@ -75,6 +78,18 @@ def seed_demo_database(engine) -> dict[str, int]:
                 status="working",
             )
         )
+
+        for definition in APPROVED_CONFIGURATIONS:
+            session.add(
+                ProcessConfigurationRow(
+                    id=definition.id,
+                    name=definition.name,
+                    version=definition.version,
+                    status=definition.status,
+                    definition_json=definition.model_dump(mode="json"),
+                    approved_by="Digital BDEP Demo Governance",
+                )
+            )
         session.add(
             DesignBasisRevisionRow(
                 id=DESIGN_BASIS_REVISION_ID,
@@ -228,6 +243,7 @@ def seed_demo_database(engine) -> dict[str, int]:
 
     return {
         "projects": 1,
+        "process_configurations": len(APPROVED_CONFIGURATIONS),
         "criteria": len(DESIGN_BASIS_CRITERIA),
         "criterion_links": criterion_links,
         "design_cases": len(DESIGN_CASES),
@@ -315,6 +331,7 @@ def load_object_dossier(session: Session, object_id: str) -> ObjectDossier:
 def database_summary(session: Session) -> dict[str, int]:
     entities = {
         "projects": ProjectRow,
+        "process_configurations": ProcessConfigurationRow,
         "design_basis_revisions": DesignBasisRevisionRow,
         "design_basis_criteria": DesignBasisCriterionRow,
         "criterion_object_links": CriterionObjectLinkRow,
@@ -354,3 +371,16 @@ def load_configuration_match_facts(session: Session) -> dict[str, str | float | 
     if row is not None and row.status == "approved":
         facts["pump_minimum_flow_required"] = row.value_json
     return facts
+
+
+
+def load_approved_configurations(session: Session) -> list[ConfigurationDefinition]:
+    rows = session.scalars(
+        select(ProcessConfigurationRow)
+        .where(ProcessConfigurationRow.status == "approved")
+        .order_by(ProcessConfigurationRow.id)
+    ).all()
+    return [
+        ConfigurationDefinition.model_validate(row.definition_json)
+        for row in rows
+    ]
