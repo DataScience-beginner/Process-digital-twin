@@ -50,3 +50,21 @@ Replace the hard-coded drawing route/coordinates with a **data-driven renderer**
 5. preserve the canonical model unchanged
 
 This is the prerequisite before serious P&ID drafting intelligence.
+
+
+## MVP 0.3A / 0.3B — drafting standard layer
+Implemented:
+- standards hierarchy documented in docs/digital-bdep/DRAFTING_STANDARDS.md
+- engineering drafting TODO in docs/digital-bdep/DRAFTING_TODO.md
+- DraftingProfile model
+- symbol registry with declared symbol sizes and connection anchors
+- monochrome engineering renderer
+- process/signal/association line styles
+- explicit vessel nozzles
+- drawing border, zones, grid references and title block
+- line identifiers and development notes
+- tests requiring every current plant object to resolve to a registered symbol master
+
+Local verification: 16/16 tests pass.
+
+Next: qualify/refine symbol masters against the company-approved Visio stencil, then move manual view positions/routes into a DrawingView model before automatic layout.
