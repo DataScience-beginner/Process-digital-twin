@@ -279,6 +279,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 <g class="selectable" data-object-id="BOUND-PRODUCT" onclick="selectEntity('BOUND-PRODUCT')">
 <path class="sym" d="M1046 423 H1066 L1076 430 L1066 437 H1046 Z"/>
 </g>
+<a href="/engineering-2"><text x="1000" y="410" class="txt" style="fill:#174a77;text-decoration:underline">CONT. PID-DEMO-002</text></a>
 
 <!-- Minimum-flow control -->
 <g class="selectable" data-object-id="INS-FT101" onclick="selectEntity('INS-FT101')">{_bubble(700,215,"FT","FT-101")}</g>
