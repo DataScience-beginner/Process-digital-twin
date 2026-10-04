@@ -29,7 +29,7 @@ def test_engineering_view_has_clickable_digital_thread_objects():
     assert 'data-object-id="EQ-V101"' in html
     assert 'data-object-id="EQ-P101"' in html
     assert 'data-object-id="VLV-FCV101"' in html
-    assert "selectObject('EQ-V101')" in html
+    assert "selectEntity('EQ-V101')" in html
 
 
 def test_sidebar_has_requested_discipline_tabs():
