@@ -160,6 +160,12 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 .case-table{{border-collapse:collapse;width:100%;font-size:9px;margin-top:6px}}
 .case-table th,.case-table td{{border:1px solid #ddd;padding:4px;text-align:left;vertical-align:top}}
 .case-table th{{background:#f1f5f9}}
+.calc-trace{{border:2px solid #bfdbfe;background:#f8fbff;margin:9px 0;padding:9px}}
+.calc-trace-head{{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;padding:7px;font-size:9px}}
+.calc-trace h5{{font-size:9px;text-transform:uppercase;color:#1e3a5f;margin:10px 0 5px}}
+.calc-step{{background:#fff;border-left:3px solid #60a5fa;padding:7px;margin:6px 0;font-size:9px;line-height:1.45}}
+.calc-step-title{{font-weight:700;margin-bottom:3px}} .calc-step-no{{font-size:8px;color:#64748b;text-transform:uppercase}}
+.calc-step code{{white-space:normal;font-size:9px}} .calc-trace ul{{font-size:9px;line-height:1.45}}
 .view-switch{{display:flex;gap:6px;margin:10px 0 6px}}
 .view-btn{{font-size:10px;padding:6px 9px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
 .view-btn.active{{background:#0f172a;color:#fff}}
@@ -610,6 +616,36 @@ function detailList(rows){{
  if(!Array.isArray(rows)||!rows.length)return '<div class="empty">No data.</div>';
  return '<div class="structured-value">'+rows.map(x=>'<div class="sv-row"><div class="sv-key">'+esc(x.name||x.criterion_id||'Item')+'</div><div class="sv-val">'+formatValue(x.value,x.unit)+'</div></div>').join('')+'</div>';
 }}
+function traceSection(trace){{
+ if(!trace)return '';
+ let h='<div class="calc-trace"><h4>Full Calculation Trace</h4>';
+ h+='<div class="calc-trace-head">'
+   +'<div><b>Trace ID:</b> '+esc(trace.trace_id||'—')+'</div>'
+   +'<div><b>Type:</b> '+esc(trace.calculation_type||'—')+'</div>'
+   +'<div><b>Service:</b> '+esc(trace.service_version||'—')+'</div>'
+   +'<div><b>Qualification:</b> '+esc(trace.qualification||'—')+'</div>'
+   +'</div>';
+ if(trace.input_sources&&trace.input_sources.length)h+='<h5>Input Traceability</h5>'+detailTable(trace.input_sources);
+ if(trace.steps&&trace.steps.length){{
+   h+='<h5>Equation / Substitution Steps</h5>';
+   trace.steps.forEach(s=>{{
+     h+='<div class="calc-step"><div class="calc-step-no">Step '+esc(s.step||'')+'</div>'
+       +'<div class="calc-step-title">'+esc(s.title||'')+'</div>'
+       +'<div><b>Equation:</b> <code>'+esc(s.equation||'—')+'</code></div>'
+       +'<div><b>Substitution:</b> <code>'+esc(s.substitution||'—')+'</code></div>'
+       +'<div><b>Result:</b> '+formatValue(s.result,s.unit||null)+'</div>'
+       +(s.note?'<div class="detail-sub"><b>Note:</b> '+esc(s.note)+'</div>':'')
+       +'</div>';
+   }});
+ }}
+ if(trace.selection_checks&&trace.selection_checks.length)h+='<h5>Candidate / Selection Checks</h5>'+detailTable(trace.selection_checks);
+ if(trace.validation_checks&&trace.validation_checks.length)h+='<h5>Validation Checks</h5>'+detailTable(trace.validation_checks);
+ [['Assumptions','assumptions'],['Limitations / Qualification Gaps','limitations'],['Downstream Consumers','downstream_consumers']].forEach(([title,key])=>{{
+   const rows=trace[key]||[];
+   if(rows.length)h+='<h5>'+esc(title)+'</h5><ul>'+rows.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+ }});
+ return h+'</div>';
+}}
 function calculationDetail(record){{
  const d=((record&&record.metadata)||{{}}).calculation_detail;
  if(!d)return '';
@@ -618,6 +654,7 @@ function calculationDetail(record){{
  h+='<b>Criteria / Limits</b>'+detailList(d.criteria||[]);
  if(d.case_results&&d.case_results.length)h+='<b>Case Results</b>'+detailTable(d.case_results);
  if(d.relief_scenarios&&d.relief_scenarios.length)h+='<b>Relief Scenario Register</b>'+detailTable(d.relief_scenarios);
+ if(d.trace)h+=traceSection(d.trace);
  if(d.preliminary_selected_scenario)h+='<div class="detail-record"><b>Preliminary selected scenario:</b> '+esc(d.preliminary_selected_scenario)+'<div class="detail-sub">'+esc(d.selection_reason||'')+'</div></div>';
  if(d.governing_case)h+='<div class="detail-record"><b>Governing case:</b> '+esc(d.governing_case)+'<div class="detail-sub">'+esc(d.governing_reason||'')+'</div></div>';
  h+='<b>Outputs</b>'+detailList(d.outputs||[]);
