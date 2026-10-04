@@ -24,7 +24,9 @@ from .exporters import (
     export_dxf_demo,
     export_summary_csv,
     export_visio_vdx_demo,
+    extract_svg_document,
     simple_text_pdf,
+    summary_pdf_lines,
     workspace_pdf_lines,
 )
 from .hazop_renderer import render_hazop_html
@@ -373,6 +375,28 @@ def export_visio_vdx():
     )
 
 
+@app.get("/export/drawing.svg")
+def export_drawing_svg():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    cleanup = build_cleanup(plan)
+    engine = _app_engine()
+    with Session(engine) as session:
+        stages = publication_status(session)
+    html = render_clean_pid_html(
+        model,
+        plan,
+        cleanup,
+        dossiers,
+        publication_stages=stages,
+    )
+    payload = extract_svg_document(html)
+    return Response(
+        content=payload,
+        media_type="image/svg+xml",
+        headers={"Content-Disposition": 'attachment; filename="PID-DEMO-001.svg"'},
+    )
+
+
 @app.get("/export/drawing.dxf")
 def export_drawing_dxf():
     model, plan, dossiers, inspection = _full_engineering_context()
@@ -401,6 +425,21 @@ def export_drawing_dwg():
         content=payload,
         media_type="application/acad",
         headers={"Content-Disposition": 'attachment; filename="PID-DEMO-001.dwg"'},
+    )
+
+
+@app.get("/export/summaries.pdf")
+def export_summaries_pdf():
+    model, plan, dossiers, inspection = _full_engineering_context()
+    summaries = build_bdep_summaries(model=model, dossiers=dossiers, inspection=inspection)
+    payload = simple_text_pdf(
+        "Digital BDEP - Generated BDEP Summaries",
+        summary_pdf_lines(summaries),
+    )
+    return Response(
+        content=payload,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="digital_bdep_summaries.pdf"'},
     )
 
 
