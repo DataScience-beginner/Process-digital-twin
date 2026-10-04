@@ -82,3 +82,18 @@ Completed:
 - dedicated Python CI workflow for this service
 
 This keeps the digital thread authoritative while allowing the drafter workflow and drawing geometry to evolve independently.
+
+
+## MVP 0.5A — drafter skeleton
+Completed:
+- staged drafter workflow model
+- sheet intent / equipment / nozzle / primary piping / secondary piping / inline component / cleanup passes
+- protected primary suction and discharge corridors
+- separate minimum-flow recycle corridor
+- hidden semantic nozzle nodes in engineering presentation
+- first drawing quality gate with orthogonality and corridor checks
+- dedicated engineering-skeleton endpoint at /engineering-skeleton
+
+Python CI is green for this milestone.
+
+Next: MVP 0.5B adds instrumentation and control loops only after the process skeleton is accepted.
