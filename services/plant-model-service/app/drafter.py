@@ -82,10 +82,10 @@ def build_drafter_skeleton(model: PlantModel) -> DrafterPlan:
         "EQ-V101": DraftObject(semantic_object_id="EQ-V101", position=_p(220, 300)),
         "EQ-P101": DraftObject(semantic_object_id="EQ-P101", position=_p(690, 430)),
         # Pass 3: nozzle orientation follows service and equipment convention.
-        "NOZ-V101-LIQ": DraftObject(semantic_object_id="NOZ-V101-LIQ", position=_p(220, 385), visible=False),
+        "NOZ-V101-LIQ": DraftObject(semantic_object_id="NOZ-V101-LIQ", position=_p(220, 393), visible=False),
         "NOZ-V101-REC": DraftObject(semantic_object_id="NOZ-V101-REC", position=_p(256, 255), visible=False),
-        "NOZ-P101-SUC": DraftObject(semantic_object_id="NOZ-P101-SUC", position=_p(661, 430), visible=False),
-        "NOZ-P101-DIS": DraftObject(semantic_object_id="NOZ-P101-DIS", position=_p(719, 430), visible=False),
+        "NOZ-P101-SUC": DraftObject(semantic_object_id="NOZ-P101-SUC", position=_p(664, 430), visible=False),
+        "NOZ-P101-DIS": DraftObject(semantic_object_id="NOZ-P101-DIS", position=_p(716, 430), visible=False),
         # Pass 5: inline components sit on established piping corridors.
         "VLV-LCV101": DraftObject(semantic_object_id="VLV-LCV101", position=_p(395, 430)),
         "VLV-XV101": DraftObject(semantic_object_id="VLV-XV101", position=_p(535, 430)),
@@ -106,20 +106,20 @@ def build_drafter_skeleton(model: PlantModel) -> DrafterPlan:
         semantic_edge_ids=["C-LIQ-01", "C-LIQ-02", "C-SUC-02"],
         role="primary_suction",
         points=[
-            _p(220, 385),
+            _p(220, 393),
             _p(220, 430),
             _p(376, 430),
             _p(414, 430),
             _p(518, 430),
             _p(552, 430),
-            _p(661, 430),
+            _p(664, 430),
         ],
     )
     discharge = DraftRoute(
         semantic_edge_ids=["C-DIS-01", "C-DIS-02", "C-DIS-03", "C-DIS-04"],
         role="primary_discharge",
         points=[
-            _p(719, 430),
+            _p(716, 430),
             _p(785, 430),
             _p(848, 430),
             _p(882, 430),
