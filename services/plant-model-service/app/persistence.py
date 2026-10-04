@@ -13,6 +13,7 @@ from .db_schema import (
     EngineeringRecordRow,
     EquipmentRow,
     ProcessConfigurationRow,
+    PublicationStageRow,
     ProjectRow,
     RecordObjectLinkRow,
     SimulationCaseRow,
@@ -46,6 +47,7 @@ def _clear_demo(session: Session) -> None:
     for table in [
         RecordObjectLinkRow,
         EngineeringRecordRow,
+        PublicationStageRow,
         ProcessConfigurationRow,
         StreamComponentRow,
         StreamCaseResultRow,
@@ -332,6 +334,7 @@ def database_summary(session: Session) -> dict[str, int]:
     entities = {
         "projects": ProjectRow,
         "process_configurations": ProcessConfigurationRow,
+        "publication_stages": PublicationStageRow,
         "design_basis_revisions": DesignBasisRevisionRow,
         "design_basis_criteria": DesignBasisCriterionRow,
         "criterion_object_links": CriterionObjectLinkRow,
@@ -362,8 +365,10 @@ def ensure_demo_seeded(engine) -> None:
         seed_demo_database(engine)
         return
 
-    # Earlier demo DBs may predate the approved-configuration table. Add only
-    # missing configuration definitions so the matcher remains DB-backed.
+    # Earlier demo DBs may predate later schema/data additions. Backfill
+    # approved configurations and newly introduced Design Basis criteria without
+    # resetting existing project data.
+    model = demo_integrated_configuration_model()
     with Session(engine) as session:
         changed = False
         for definition in APPROVED_CONFIGURATIONS:
@@ -379,6 +384,44 @@ def ensure_demo_seeded(engine) -> None:
                     )
                 )
                 changed = True
+
+        existing_criteria = {
+            row.id for row in session.scalars(select(DesignBasisCriterionRow)).all()
+        }
+        for criterion in DESIGN_BASIS_CRITERIA:
+            if criterion.id in existing_criteria:
+                continue
+            session.add(
+                DesignBasisCriterionRow(
+                    id=criterion.id,
+                    design_basis_revision_id=DESIGN_BASIS_REVISION_ID,
+                    name=criterion.name,
+                    category=criterion.category.value,
+                    value_json=criterion.value,
+                    unit=criterion.unit,
+                    status=criterion.status.value,
+                    applicability_json={
+                        "categories": criterion.applies_to_categories,
+                        "types": criterion.applies_to_types,
+                        "targets": criterion.target_object_ids,
+                    },
+                    provenance_json=criterion.provenance.model_dump(mode="json"),
+                )
+            )
+            for obj in model.objects:
+                if criterion.applies_to(
+                    object_id=obj.id,
+                    category=obj.category,
+                    object_type=_object_type(obj),
+                ):
+                    session.add(
+                        CriterionObjectLinkRow(
+                            criterion_id=criterion.id,
+                            object_id=obj.id,
+                        )
+                    )
+            changed = True
+
         if changed:
             session.commit()
 
