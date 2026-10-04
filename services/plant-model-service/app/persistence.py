@@ -331,3 +331,16 @@ def database_summary(session: Session) -> dict[str, int]:
         name: len(session.scalars(select(entity)).all())
         for name, entity in entities.items()
     }
+
+
+
+def ensure_demo_seeded(engine) -> None:
+    """Create tables and seed only when the database is empty; never reset populated data."""
+    from sqlalchemy import select
+    from .db_schema import Base
+
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        existing = session.scalar(select(ProjectRow.id).limit(1))
+    if existing is None:
+        seed_demo_database(engine)
