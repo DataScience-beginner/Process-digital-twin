@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import StrEnum
-
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -37,13 +36,20 @@ class Equipment(BaseModel):
     equipment_type: EquipmentType
     service: str | None = None
     ports: list[Port]
+    properties: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_unique_ports(self) -> "Equipment":
-        names = [port.name for port in self.ports]
+    def unique_ports(self) -> "Equipment":
+        names = [p.name for p in self.ports]
         if len(names) != len(set(names)):
             raise ValueError(f"Equipment {self.id} contains duplicate port names")
         return self
+
+    def port(self, name: str) -> Port:
+        for item in self.ports:
+            if item.name == name:
+                return item
+        raise KeyError(name)
 
 
 class ConnectionEndpoint(BaseModel):
@@ -55,6 +61,7 @@ class Connection(BaseModel):
     id: str = Field(min_length=1)
     source: ConnectionEndpoint
     target: ConnectionEndpoint
+    service: str | None = None
 
 
 class PlantModel(BaseModel):
@@ -64,54 +71,54 @@ class PlantModel(BaseModel):
 
     @model_validator(mode="after")
     def validate_graph(self) -> "PlantModel":
-        equipment_ids = [item.id for item in self.equipment]
-        if len(equipment_ids) != len(set(equipment_ids)):
+        ids = [e.id for e in self.equipment]
+        if len(ids) != len(set(ids)):
             raise ValueError("Duplicate equipment IDs are not allowed")
 
-        tags = [item.tag for item in self.equipment]
+        tags = [e.tag for e in self.equipment]
         if len(tags) != len(set(tags)):
             raise ValueError("Duplicate equipment tags are not allowed")
 
-        connection_ids = [item.id for item in self.connections]
+        connection_ids = [c.id for c in self.connections]
         if len(connection_ids) != len(set(connection_ids)):
             raise ValueError("Duplicate connection IDs are not allowed")
 
-        equipment_by_id = {item.id: item for item in self.equipment}
-
+        by_id = {e.id: e for e in self.equipment}
         for connection in self.connections:
-            self._validate_endpoint(
-                connection_id=connection.id,
-                endpoint_name="source",
-                endpoint=connection.source,
-                equipment_by_id=equipment_by_id,
+            source_port = self._resolve(
+                connection.id, "source", connection.source, by_id
             )
-            self._validate_endpoint(
-                connection_id=connection.id,
-                endpoint_name="target",
-                endpoint=connection.target,
-                equipment_by_id=equipment_by_id,
+            target_port = self._resolve(
+                connection.id, "target", connection.target, by_id
             )
+            if source_port.direction == PortDirection.IN:
+                raise ValueError(
+                    f"Connection {connection.id} source port must allow output"
+                )
+            if target_port.direction == PortDirection.OUT:
+                raise ValueError(
+                    f"Connection {connection.id} target port must allow input"
+                )
 
         return self
 
     @staticmethod
-    def _validate_endpoint(
-        *,
+    def _resolve(
         connection_id: str,
         endpoint_name: str,
         endpoint: ConnectionEndpoint,
-        equipment_by_id: dict[str, Equipment],
-    ) -> None:
-        equipment = equipment_by_id.get(endpoint.object_id)
+        by_id: dict[str, Equipment],
+    ) -> Port:
+        equipment = by_id.get(endpoint.object_id)
         if equipment is None:
             raise ValueError(
                 f"Connection {connection_id} {endpoint_name} references "
                 f"unknown equipment '{endpoint.object_id}'"
             )
-
-        valid_ports = {port.name for port in equipment.ports}
-        if endpoint.port not in valid_ports:
+        try:
+            return equipment.port(endpoint.port)
+        except KeyError:
             raise ValueError(
                 f"Connection {connection_id} {endpoint_name} references "
                 f"unknown port '{endpoint.port}' on equipment '{endpoint.object_id}'"
-            )
+            ) from None
