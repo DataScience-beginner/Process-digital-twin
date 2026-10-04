@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from .clean_renderer import render_clean_pid_html
 from .config_matcher import match_configuration
+from .config_match_renderer import render_configuration_match_html
 from .cleanup import build_cleanup
 from .configurations import demo_integrated_configuration_model
 from .drafter import build_drafter_instrumented, build_drafter_skeleton
@@ -102,6 +103,21 @@ def configuration_match(design_case_id: str):
         design_basis_facts=facts,
         definitions=definitions,
     ).model_dump(mode="json")
+
+
+@app.get("/configuration-match/{design_case_id}", response_class=HTMLResponse)
+def configuration_match_view(design_case_id: str):
+    publication = publish_demo_simulation(design_case_id)
+    engine = _app_engine()
+    with Session(engine) as session:
+        facts = load_configuration_match_facts(session)
+        definitions = load_approved_configurations(session)
+    result = match_configuration(
+        publication,
+        design_basis_facts=facts,
+        definitions=definitions,
+    )
+    return render_configuration_match_html(publication, result)
 
 
 @app.get("/api/object/{object_id}/dossier")
