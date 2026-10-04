@@ -23,6 +23,7 @@ from .persistence import (
 )
 from .thread_service import DESIGN_CASES, build_object_dossier
 from .topology_compiler import compile_engineering_topology
+from .topology_compile_renderer import render_compilation_trace_html
 from .simulation import publish_demo_simulation
 
 app = FastAPI(title="Digital BDEP Prototype", version="0.8.0")
@@ -124,6 +125,11 @@ def configuration_match(design_case_id: str):
 @app.get("/api/compiled-topology/{design_case_id}")
 def compiled_topology(design_case_id: str):
     return _compile_case(design_case_id).model_dump(mode="json")
+
+
+@app.get("/compiler/{design_case_id}", response_class=HTMLResponse)
+def compiler_trace_view(design_case_id: str):
+    return render_compilation_trace_html(_compile_case(design_case_id))
 
 
 @app.get("/configuration-match/{design_case_id}", response_class=HTMLResponse)
