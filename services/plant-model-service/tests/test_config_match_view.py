@@ -27,4 +27,4 @@ def test_match_view_states_that_pid_is_not_yet_instantiated():
     )
     html = render_configuration_match_html(publication, result)
 
-    assert "does not yet instantiate P&amp;ID valves" in html
+    assert "does not yet instantiate P&ID valves" in html
