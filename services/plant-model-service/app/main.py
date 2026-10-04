@@ -77,7 +77,18 @@ def engineering_view():
     with Session(engine) as session:
         dossiers = {
             object_id: load_object_dossier(session, object_id)
-            for object_id in ["EQ-V101", "EQ-P101", "VLV-FCV101"]
+            for object_id in [
+                "EQ-V101",
+                "EQ-P101",
+                "VLV-FCV101",
+                "VLV-LCV101",
+                "VLV-PSV101",
+                "INS-PT101",
+                "INS-LT101",
+                "INS-LIC101",
+                "INS-FT101",
+                "INS-FIC101",
+            ]
         }
         stages = publication_status(session)
     return render_clean_pid_html(
