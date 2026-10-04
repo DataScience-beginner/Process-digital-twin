@@ -97,3 +97,17 @@ Completed:
 Python CI is green for this milestone.
 
 Next: MVP 0.5B adds instrumentation and control loops only after the process skeleton is accepted.
+
+
+## MVP 0.5C — drafter cleanup and annotation intelligence
+Completed:
+- typed line-tag, off-page, note and title annotations
+- explicit protected drawing zones
+- title block separation
+- annotation overlap checks
+- drawing-border bounds checks
+- title-block intrusion checks
+- preserved orthogonal-routing validation
+- preserved 0.5A process skeleton and 0.5B instrumentation geometry
+
+The engineering view now has a final cleanup/annotation pass before issue.
