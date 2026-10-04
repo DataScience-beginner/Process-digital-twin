@@ -225,3 +225,77 @@ def test_lines_are_contextual_not_dumped_into_every_object_calculation_tab():
     assert "Connected Lines / Connections" in html
     assert "Connected Nodes" in html
     assert "Connected line calculations are opened by selecting the line itself." in html
+
+
+
+def test_engineering_workspace_keeps_existing_features_in_three_pane_shell():
+    html = _render_db_view()
+    for text in [
+        "Workspace",
+        "P&ID 001 — Engineering",
+        "Plant Model / Digital Thread",
+        "P&ID 002 — Continuation",
+        "Project Dashboard",
+        "HAZOP",
+        "BDEP Summaries",
+        "Configuration Match",
+        "Compiler / Plant Data",
+        "Publish Project Stages",
+        "Discipline Inspector",
+        "Sketch / Stencil Palette",
+        "Drafting Assistance",
+        "Exports",
+        "Tabs",
+        "Properties",
+        "Detailed View",
+        "Pop out / Calculation Workspace",
+    ]:
+        assert text in html
+
+    assert 'id="leftSidebar"' in html
+    assert 'id="pidCanvas"' in html
+    assert 'id="rightSidebar"' in html
+    assert "toggleLeftSidebar()" in html
+    assert "toggleRightSidebar()" in html
+
+
+def test_workspace_supports_drag_drop_stencils_guided_connectors_and_autocorrect_options():
+    html = _render_db_view()
+    for stencil in [
+        "vessel",
+        "pump",
+        "exchanger",
+        "manual_valve",
+        "control_valve",
+        "psv",
+        "instrument",
+        "boundary",
+    ]:
+        assert f'data-stencil="{stencil}"' in html
+
+    for text in [
+        "Guided Connector",
+        "Auto-correct",
+        "Validate Draft",
+        "Prepare Change Set",
+        "Grid snap",
+        "Orthogonal route",
+        "Avoid overlap",
+        "Keep in sheet",
+        "Auto-guided",
+        "Process line",
+        "Control signal",
+        "Impulse / sensing",
+        "PROPOSED_NOT_APPLIED",
+    ]:
+        assert text in html
+
+    for function_name in [
+        "canvasDrop",
+        "createDraftObject",
+        "createDraftConnection",
+        "autoCorrectDrafts",
+        "validateDrafts",
+        "prepareChangeSet",
+    ]:
+        assert f"function {function_name}" in html
