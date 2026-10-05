@@ -107,6 +107,27 @@ def render_clean_pid_html(
 body{{margin:0;font-family:Arial,Helvetica,sans-serif;background:#e7e9ec;color:#111}}
 header{{background:#fff;border-bottom:1px solid #aaa;padding:11px 16px;display:flex;justify-content:space-between}}
 header a{{margin-left:14px;color:#174a77;text-decoration:none;font-size:12px}}
+.baseline-strip{{background:#fbfcfd;border-bottom:1px solid #dbe1e8;padding:6px 12px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}}
+.baseline-pill{{font-size:9px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:999px;background:#fff}}
+.baseline-pill.approved{{background:#ecfdf3;color:#166534;border-color:#a7f3d0}}
+.baseline-pill.working{{background:#fff7ed;color:#9a3412;border-color:#fed7aa}}
+.engineering-flowbar{{background:#fff;border-bottom:1px solid #cbd5e1;padding:6px 10px;display:flex;gap:4px;align-items:center;overflow:auto}}
+.flow-step{{white-space:nowrap;font-size:8px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;cursor:pointer}}
+.flow-step.published{{background:#f0fdf4;border-color:#86efac}}
+.flow-step.review{{background:#fff7ed;border-color:#fdba74}}
+.flow-step.client{{margin-left:auto;background:#f8fafc;border-color:#94a3b8}}
+.flow-dot{{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px;background:#94a3b8}}
+.flow-step.published .flow-dot{{background:#16a34a}}
+.flow-step.review .flow-dot{{background:#d97706}}
+.left-mode-switch{{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:7px}}
+.left-mode-btn{{font-size:9px;padding:6px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
+.left-mode-btn.active{{background:#0f172a;color:#fff}}
+.left-mode-pane.hidden{{display:none}}
+.browser-subgroup{{border-top:1px solid #eef2f6;padding:3px 0}}
+.browser-subhead{{font-size:7px;font-weight:700;text-transform:uppercase;color:#64748b;padding:5px 7px 3px}}
+.browser-child.disabled{{cursor:default;opacity:.55;background:#fafafa}}
+.selectable.selection-object .sym,.selectable.selection-object .inst{{stroke:#c47a16!important;stroke-width:3!important;filter:drop-shadow(0 0 2px rgba(196,122,22,.3))}}
+.route-hit.selection-route{{stroke:#c47a16!important;stroke-width:5!important;opacity:.78}}
 .publishbar{{background:#f8fafc;border-bottom:1px solid #cbd5e1;padding:8px 12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}}
 .pubbtn{{font-size:10px;padding:7px 9px;border:1px solid #94a3b8;background:#fff;border-radius:4px;cursor:pointer}}
 .pubbtn:hover{{background:#eef2ff}} .pubbtn.all{{font-weight:700;border-color:#334155}}
@@ -253,38 +274,32 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
 </head>
 <body>
 <header>
-<div><strong>Digital BDEP — Engineering View</strong><div class="muted">Staged publishing · connected P&ID + object-centric Digital Thread</div></div>
-<nav><a href="/dashboard">Dashboard</a><a href="/hazop">HAZOP</a><a href="/summaries">Summaries</a><a href="/engineering-2">PID-002</a><a href="/configuration-match/CASE-NORMAL">Configuration</a><a href="/compiler/CASE-NORMAL">Compiler</a><a href="/graph">Graph View</a></nav>
+<div><strong>Digital BDEP — Engineering Workspace</strong><div class="muted">Engineering Navigator · drawing canvas · object inspector · controlled engineering revisions</div></div>
+<nav><a href="/dashboard">Dashboard</a><a href="/hazop">HAZOP</a><a href="/summaries">Summaries</a><a href="/revision-control">Revision / Review</a><a href="/client">Client Issue</a><a href="/export/summaries.pdf">Exports</a></nav>
 </header>
+<div class="baseline-strip">
+  <span id="baselineBadge" class="baseline-pill approved">Approved Engineering Baseline</span>
+  <span id="changeBadge" class="baseline-pill working">Engineering Change Packages</span>
+  <span class="baseline-pill">Internal engineering view</span>
+</div>
+<div id="engineeringWorkflow" class="engineering-flowbar"></div>
+<div id="publishbar" style="display:none"></div>
 <main id="workspaceGrid" class="workspace-grid">
 <aside id="leftSidebar" class="left-sidebar">
   <div class="workspace-section">
-    <div class="workspace-heading">Engineering Model Browser</div>
-    <input id="modelSearch" class="model-search" type="search" placeholder="Search tag, line, stream, service..." oninput="renderModelBrowser()">
-    <div id="modelBrowser"></div>
-  </div>
-
-  <details class="utility-drawer">
-    <summary>Project Workflow & Views</summary>
-    <div class="utility-body">
-      <div class="workspace-nav" style="margin-bottom:7px">
-        <button class="workspace-btn" data-canvas="pid1" onclick="switchCanvas('pid1',this)">P&ID 001 — Engineering</button>
-        <button class="workspace-btn" data-canvas="plant" onclick="switchCanvas('plant',this)">Plant Model / Digital Thread</button>
-        <button class="workspace-btn" data-canvas="pid2" onclick="switchCanvas('pid2',this)">P&ID 002 — Continuation</button>
-        <button class="workspace-btn" data-canvas="dashboard" onclick="switchCanvas('dashboard',this)">Project Dashboard</button>
-        <button class="workspace-btn" data-canvas="hazop" onclick="switchCanvas('hazop',this)">HAZOP</button>
-        <button class="workspace-btn" data-canvas="summaries" onclick="switchCanvas('summaries',this)">BDEP Summaries</button>
-        <button class="workspace-btn" data-canvas="configuration" onclick="switchCanvas('configuration',this)">Configuration Match</button>
-        <button class="workspace-btn" data-canvas="compiler" onclick="switchCanvas('compiler',this)">Compiler / Plant Data</button>
-      </div>
-      <div class="workspace-heading">Publish Stages</div>
-      <div class="publishbar left-publish" id="publishbar"></div>
+    <div class="workspace-heading">Engineering Navigator</div>
+    <div class="left-mode-switch">
+      <button id="projectModeBtn" class="left-mode-btn active" onclick="setLeftMode('project')">Project</button>
+      <button id="addModeBtn" class="left-mode-btn" onclick="setLeftMode('add')">Add / Library</button>
     </div>
-  </details>
 
-  <details class="utility-drawer">
-    <summary>Sketch / Stencils & Drafting</summary>
-    <div class="utility-body">
+    <div id="projectNavigatorPane" class="left-mode-pane">
+      <input id="modelSearch" class="model-search" type="search" placeholder="Search tag, line, stream, service..." oninput="renderModelBrowser()">
+      <div id="modelBrowser"></div>
+    </div>
+
+    <div id="libraryNavigatorPane" class="left-mode-pane hidden">
+      <div class="muted" style="font-size:8px;margin-bottom:7px">Reusable Engineering Library. Dropped objects remain provisional until controlled promotion.</div>
       <div class="stencil-grid">
         <div class="stencil" draggable="true" data-stencil="vessel" ondragstart="stencilDragStart(event)">Vessel</div>
         <div class="stencil" draggable="true" data-stencil="pump" ondragstart="stencilDragStart(event)">Pump</div>
@@ -295,7 +310,8 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
         <div class="stencil" draggable="true" data-stencil="instrument" ondragstart="stencilDragStart(event)">Instrument</div>
         <div class="stencil" draggable="true" data-stencil="boundary" ondragstart="stencilDragStart(event)">Off-page / B.L.</div>
       </div>
-      <div class="muted" style="font-size:8px;margin:6px 0">Dropped items are provisional. The published engineering model is unchanged until controlled promotion.</div>
+
+      <div class="workspace-heading" style="margin-top:10px">Drafting Tools</div>
       <div style="display:grid;gap:5px;margin-bottom:6px">
         <label style="font-size:8px">Connector type
           <select id="connectorKindMode" style="width:100%;font-size:8px;padding:4px;border:1px solid #cbd5e1">
@@ -322,19 +338,7 @@ dialog::backdrop{{background:rgba(15,23,42,.45)}}
       </div>
       <div id="toolStatus" class="tool-status">Draft mode ready.</div>
     </div>
-  </details>
-
-  <details class="utility-drawer">
-    <summary>Exports</summary>
-    <div class="utility-body workspace-nav">
-      <a class="workspace-btn" href="/export/drawing.svg">Drawing SVG</a>
-      <a class="workspace-btn" href="/export/dexpi.xml">DEXPI XML</a>
-      <a class="workspace-btn" href="/export/visio.vdx">Visio VDX</a>
-      <a class="workspace-btn" href="/export/drawing.dxf">CAD DXF</a>
-      <a class="workspace-btn" href="/export/drawing.dwg">DWG Adapter</a>
-      <a class="workspace-btn" href="/export/summaries.pdf">BDEP Summary PDF</a>
-    </div>
-  </details>
+  </div>
 </aside>
 <section class="center-workspace">
   <div class="canvas-toolbar">
@@ -532,6 +536,35 @@ function renderPublishBar(){{
  }}).join("");
  document.getElementById("publishbar").innerHTML=buttons+'<button class="pubbtn all" onclick="publishAllStages()">Publish All</button><span id="pubmsg" class="pubmsg"></span>';
 }}
+function renderEngineeringWorkflow(){{
+ const host=document.getElementById("engineeringWorkflow");
+ if(!host)return;
+ const stageButtons=publishDefs.map(([id,label])=>{{
+   const state=stageState(id);
+   const cls=state.status==="published"?" published":"";
+   return '<button class="flow-step'+cls+'" onclick="publishStage(\''+id+'\')"><span class="flow-dot"></span>'+esc(label.replace("Publish ","").replace("Select ",""))+'</button>';
+ }}).join("");
+ host.innerHTML=stageButtons
+   +'<button class="flow-step review" data-canvas="revision" onclick="switchCanvas(\'revision\',this)"><span class="flow-dot"></span>Engineering Review</button>'
+   +'<button class="flow-step" data-canvas="revision" onclick="switchCanvas(\'revision\',this)"><span class="flow-dot"></span>Integration Queue</button>'
+   +'<button class="flow-step" data-canvas="revision" onclick="switchCanvas(\'revision\',this)"><span class="flow-dot"></span>Release Candidate</button>'
+   +'<button class="flow-step client" data-canvas="client" onclick="switchCanvas(\'client\',this)"><span class="flow-dot"></span>Client Issue</button>';
+}}
+async function loadRevisionSummary(){{
+ try {{
+   const response=await fetch("/api/revision-control");
+   if(!response.ok)return;
+   const data=await response.json();
+   const baseline=data.approved_engineering_baseline||{{}};
+   const packages=data.engineering_change_packages||[];
+   const baselineBadge=document.getElementById("baselineBadge");
+   const changeBadge=document.getElementById("changeBadge");
+   if(baselineBadge)baselineBadge.textContent="Approved Engineering Baseline: "+(baseline.revision||"—");
+   if(changeBadge)changeBadge.textContent=packages.length+" Engineering Change Package"+(packages.length===1?"":"s");
+ }} catch(_error) {{
+   // The drawing viewer remains usable even if governance summary is unavailable.
+ }}
+}}
 async function publishStage(stage){{
  const msg=document.getElementById("pubmsg");
  msg.textContent="Publishing "+stage+"...";
@@ -572,7 +605,7 @@ const tabDefs=[
  ["epc_vendor","EPC / Vendor"],
  ["operations","Operations"],
  ["quality","Drawing / QA"],
- ["history","History"]
+ ["history","History / Revision"]
 ];
 const domainMap={{
  pid:"pid",
@@ -621,30 +654,55 @@ function modelBrowserGroups(){{
      const key=String(e.stream_number);
      if(seenStreams.has(key))return;
      seenStreams.add(key);
-     streams.push({{
-       id:"STREAM-"+key,
-       label:key,
-       meta:e.service||e.line_number||"",
-       type:"stream",
-       target_id:e.id
-     }});
+     streams.push({{id:"STREAM-"+key,label:key,meta:e.service||e.line_number||"",type:"stream",target_id:e.id}});
    }});
- const drawings=[
-   {{id:"DRAWING-PID-001",label:"PID-DEMO-001",meta:"Separator + pump configuration",type:"drawing",canvas:"pid1"}},
-   {{id:"DRAWING-PID-002",label:"PID-DEMO-002",meta:"Continuation section",type:"drawing",canvas:"pid2"}},
-   {{id:"DRAWING-PLANT-MODEL",label:"Plant Model",meta:"Digital-thread graph",type:"model",canvas:"plant"}}
+
+ const lines=browserEntityRows(e=>e.category==="line");
+ const inlineValves=browserEntityRows(e=>e.category==="valve"&&!String(e.object_type||"").includes("control")&&!String(e.tag||"").startsWith("PSV"));
+ const controlValves=browserEntityRows(e=>e.category==="valve"&&String(e.object_type||"").includes("control"));
+ const relief=browserEntityRows(e=>e.category==="valve"&&String(e.tag||"").startsWith("PSV"));
+ const instruments=browserEntityRows(e=>e.category==="instrument");
+ const signals=browserEntityRows(e=>e.category==="connection"&&e.object_type==="signal_connection");
+ const instrumentConnections=browserEntityRows(e=>e.category==="connection"&&e.object_type==="instrument_connection");
+
+ const pidDrawings=[
+   {{id:"DRAWING-PID-001",label:"PID-DEMO-001",meta:"Separator + pump configuration",type:"P&ID",canvas:"pid1"}},
+   {{id:"DRAWING-PID-002",label:"PID-DEMO-002",meta:"Continuation section",type:"P&ID",canvas:"pid2"}}
  ];
  return [
    {{id:"equipment",label:"Equipment",items:browserEntityRows(e=>e.category==="equipment")}},
-   {{id:"instruments",label:"Instruments",items:browserEntityRows(e=>e.category==="instrument")}},
    {{id:"streams",label:"Streams",items:streams}},
-   {{id:"piping",label:"Piping / Lines",items:browserEntityRows(e=>e.category==="line")}},
-   {{id:"valves",label:"Valves",items:browserEntityRows(e=>e.category==="valve")}},
-   {{id:"control_loops",label:"Control Loops / Signals",items:browserEntityRows(e=>e.category==="connection"&&e.object_type==="signal_connection")}},
-   {{id:"connections",label:"Instrument Connections",items:browserEntityRows(e=>e.category==="connection"&&e.object_type==="instrument_connection")}},
+   {{id:"piping",label:"Pipelines",subgroups:[
+     {{label:"Lines",items:lines}},
+     {{label:"Inline Valves",items:inlineValves}}
+   ]}},
+   {{id:"instruments",label:"Instruments / Control",subgroups:[
+     {{label:"Control Valves",items:controlValves}},
+     {{label:"PSV / Relief Protection",items:relief}},
+     {{label:"Transmitters / Indicators / Controllers",items:instruments}},
+     {{label:"Control Loops / Signals",items:signals}},
+     {{label:"Instrument Connections",items:instrumentConnections}}
+   ]}},
    {{id:"boundaries",label:"Boundaries / Off-page",items:browserEntityRows(e=>e.category==="boundary")}},
-   {{id:"drawings",label:"Drawings / Views",items:drawings}}
+   {{id:"drawings",label:"Drawings",subgroups:[
+     {{label:"PFD",items:[{{id:"DRAWING-PFD-FAMILY",label:"PFD",meta:"Process Flow Diagram family · current demo representation pending",type:"drawing family",disabled:true}}]}},
+     {{label:"P&ID",items:pidDrawings}},
+     {{label:"MSD",items:[{{id:"DRAWING-MSD-FAMILY",label:"MSD",meta:"Material Selection Diagram family · current demo representation pending",type:"drawing family",disabled:true}}]}},
+     {{label:"Plant Model",items:[{{id:"DRAWING-PLANT-MODEL",label:"Plant Model",meta:"Semantic digital-thread view",type:"model",canvas:"plant"}}]}}
+   ]}}
  ];
+}}
+function renderBrowserRow(item){{
+ if(item.disabled){{
+   return '<div class="browser-child disabled"><span><div class="browser-label">'+esc(item.label)+'</div><div class="browser-meta">'+esc(item.meta||"")+'</div></span><span class="browser-type">'+esc(humanKey(item.type||""))+'</span></div>';
+ }}
+ const active=(item.target_id===selectedId)?" active":"";
+ const action=item.canvas
+   ? "switchCanvas('"+item.canvas+"')"
+   : "selectFromBrowser('"+item.target_id+"')";
+ return '<button class="browser-child'+active+'" data-browser-target="'+esc(item.target_id||item.id)+'" onclick="'+action+'">'
+   +'<span><div class="browser-label">'+esc(item.label)+'</div><div class="browser-meta">'+esc(item.meta||"")+'</div></span>'
+   +'<span class="browser-type">'+esc(humanKey(item.type||""))+'</span></button>';
 }}
 function renderModelBrowser(){{
  const host=document.getElementById("modelBrowser");
@@ -652,25 +710,48 @@ function renderModelBrowser(){{
  const q=(document.getElementById("modelSearch")?.value||"").trim().toLowerCase();
  const groups=modelBrowserGroups();
  host.innerHTML=groups.map((group,index)=>{{
-   const items=group.items.filter(item=>{{
-     if(!q)return true;
-     return [item.label,item.meta,item.type,item.id].join(" ").toLowerCase().includes(q);
-   }});
-   if(q&&items.length===0)return "";
+   const rawSubgroups=group.subgroups||[{{label:null,items:group.items||[]}}];
+   const subgroups=rawSubgroups.map(sub=>{{
+     const items=(sub.items||[]).filter(item=>{{
+       if(!q)return true;
+       return [item.label,item.meta,item.type,item.id].join(" ").toLowerCase().includes(q);
+     }});
+     return {{label:sub.label,items}};
+   }}).filter(sub=>!q||sub.items.length);
+   const total=subgroups.reduce((n,sub)=>n+sub.items.length,0);
+   if(q&&total===0)return "";
    const open=(q||index===0)?" open":"";
-   const rows=items.map(item=>{{
-     const active=(item.target_id===selectedId)?" active":"";
-     const action=item.canvas
-       ? "switchCanvas('"+item.canvas+"')"
-       : "selectFromBrowser('"+item.target_id+"')";
-     return '<button class="browser-child'+active+'" data-browser-target="'+esc(item.target_id||item.id)+'" onclick="'+action+'">'
-       +'<span><div class="browser-label">'+esc(item.label)+'</div><div class="browser-meta">'+esc(item.meta||"")+'</div></span>'
-       +'<span class="browser-type">'+esc(humanKey(item.type||""))+'</span></button>';
+   const body=subgroups.map(sub=>{{
+     const heading=sub.label?'<div class="browser-subhead">'+esc(sub.label)+'</div>':"";
+     return '<div class="browser-subgroup">'+heading+(sub.items.map(renderBrowserRow).join("")||'<div class="empty">No matching items.</div>')+'</div>';
    }}).join("");
    return '<details class="model-category" data-browser-category="'+esc(group.id)+'"'+open+'>'
-     +'<summary>'+esc(group.label)+'<span class="model-count">'+items.length+'</span></summary>'
-     +'<div class="browser-list">'+(rows||'<div class="empty">No matching items.</div>')+'</div></details>';
+     +'<summary>'+esc(group.label)+'<span class="model-count">'+total+'</span></summary>'
+     +'<div class="browser-list">'+body+'</div></details>';
  }}).join("");
+}}
+function clearCanvasSelection(){{
+ document.querySelectorAll("#pidCanvas .selection-object").forEach(x=>x.classList.remove("selection-object"));
+ document.querySelectorAll("#pidCanvas .selection-route").forEach(x=>x.classList.remove("selection-route"));
+}}
+function applyCanvasSelection(id){{
+ clearCanvasSelection();
+ const safe=(window.CSS&&CSS.escape)?CSS.escape(id):String(id).replace(/"/g,"");
+ const objectEl=document.querySelector('#pidCanvas [data-object-id="'+safe+'"]');
+ const routeEl=document.querySelector('#pidCanvas [data-route-entity-id="'+safe+'"]');
+ if(objectEl)objectEl.classList.add("selection-object");
+ if(routeEl)routeEl.classList.add("selection-route");
+}}
+function setLeftMode(mode){{
+ const project=document.getElementById("projectNavigatorPane");
+ const library=document.getElementById("libraryNavigatorPane");
+ const projectBtn=document.getElementById("projectModeBtn");
+ const addBtn=document.getElementById("addModeBtn");
+ if(!project||!library)return;
+ project.classList.toggle("hidden",mode!=="project");
+ library.classList.toggle("hidden",mode!=="add");
+ projectBtn?.classList.toggle("active",mode==="project");
+ addBtn?.classList.toggle("active",mode==="add");
 }}
 function selectFromBrowser(id){{
  if(!entityFor(id))return;
@@ -1004,7 +1085,9 @@ function canvasUrl(kind){{
    hazop:"/hazop",
    summaries:"/summaries",
    configuration:"/configuration-match/CASE-NORMAL",
-   compiler:"/compiler/CASE-NORMAL"
+   compiler:"/compiler/CASE-NORMAL",
+   revision:"/revision-control",
+   client:"/client"
  }};
  return urls[kind]||null;
 }}
@@ -1017,7 +1100,9 @@ function canvasLabel(kind){{
    hazop:"HAZOP Digital Thread",
    summaries:"Generated BDEP Summaries",
    configuration:"Configuration Match",
-   compiler:"Compiler / Plant Data"
+   compiler:"Compiler / Plant Data",
+   revision:"Engineering Revision / Review Control",
+   client:"Released Client Issue"
  }};
  return labels[kind]||kind;
 }}
@@ -1288,11 +1373,19 @@ function prepareChangeSet(){{
 function selectEntity(id){{
  if(!entityFor(id))return;
  const usedByConnector=guidedSelect(id);
- selectedId=id;activeTab="overview";render();setInspectorMode(inspectorMode);renderModelBrowser();
+ selectedId=id;
+ activeTab="overview";
+ applyCanvasSelection(id);
+ render();
+ if(!usedByConnector)setInspectorMode("properties");
+ else setInspectorMode(inspectorMode);
+ renderModelBrowser();
  if(usedByConnector)return;
 }}
 function selectObject(id){{selectEntity(id);}}
 renderPublishBar();
+renderEngineeringWorkflow();
+loadRevisionSummary();
 renderModelBrowser();
 if(entities["EQ-V101"])selectEntity("EQ-V101");
 </script>
