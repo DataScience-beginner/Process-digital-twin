@@ -1,0 +1,2666 @@
+from __future__ import annotations
+
+import math
+from datetime import datetime, timezone
+from enum import StrEnum
+from typing import Any
+
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from .config_matcher import MatchStatus, match_configuration
+from .db_schema import (
+    DesignBasisCriterionRow,
+    DesignBasisRevisionRow,
+    EngineeringRecordRow,
+    PublicationStageRow,
+    RecordObjectLinkRow,
+    SimulationCaseRow,
+)
+from .persistence import (
+    PROJECT_ID,
+    load_approved_configurations,
+    load_configuration_match_facts,
+)
+from .simulation import publish_demo_simulation
+from .thread_models import RecordDomain
+
+
+class PublishStage(StrEnum):
+    DESIGN_BASIS = "design_basis"
+    SIMULATION = "simulation"
+    CONFIGURATION = "configuration"
+    PROCESS = "process"
+    INSTRUMENTATION = "instrumentation"
+    MECHANICAL = "mechanical"
+    COSTING = "costing"
+
+
+STAGE_ORDER = [
+    PublishStage.DESIGN_BASIS,
+    PublishStage.SIMULATION,
+    PublishStage.CONFIGURATION,
+    PublishStage.PROCESS,
+    PublishStage.INSTRUMENTATION,
+    PublishStage.MECHANICAL,
+    PublishStage.COSTING,
+]
+
+STAGE_DEPENDENCIES: dict[PublishStage, list[PublishStage]] = {
+    PublishStage.DESIGN_BASIS: [],
+    PublishStage.SIMULATION: [PublishStage.DESIGN_BASIS],
+    PublishStage.CONFIGURATION: [PublishStage.SIMULATION],
+    PublishStage.PROCESS: [PublishStage.CONFIGURATION],
+    PublishStage.INSTRUMENTATION: [PublishStage.PROCESS],
+    PublishStage.MECHANICAL: [PublishStage.PROCESS],
+    PublishStage.COSTING: [PublishStage.INSTRUMENTATION, PublishStage.MECHANICAL],
+}
+
+
+class PublicationStatus(BaseModel):
+    stage: PublishStage
+    label: str
+    status: str
+    revision: str | None = None
+    published_at: str | None = None
+    dependencies: list[PublishStage] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicationResult(BaseModel):
+    stage: PublishStage
+    status: str
+    revision: str
+    summary: dict[str, Any] = Field(default_factory=dict)
+    records_written: list[str] = Field(default_factory=list)
+
+
+class PublicationBlocked(RuntimeError):
+    pass
+
+
+_STAGE_LABELS = {
+    PublishStage.DESIGN_BASIS: "Design Basis",
+    PublishStage.SIMULATION: "Simulation",
+    PublishStage.CONFIGURATION: "Configuration",
+    PublishStage.PROCESS: "Process / Safety",
+    PublishStage.INSTRUMENTATION: "Instrumentation / DCS",
+    PublishStage.MECHANICAL: "Mechanical",
+    PublishStage.COSTING: "Costing",
+}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _criterion(session: Session, criterion_id: str) -> Any:
+    row = session.get(DesignBasisCriterionRow, criterion_id)
+    if row is None:
+        raise PublicationBlocked(f"Missing Design Basis criterion: {criterion_id}")
+    if row.status != "approved":
+        raise PublicationBlocked(
+            f"Design Basis criterion {criterion_id} is not approved."
+        )
+    return row.value_json
+
+
+def _stage_row(session: Session, stage: PublishStage) -> PublicationStageRow | None:
+    return session.scalar(
+        select(PublicationStageRow).where(
+            PublicationStageRow.project_id == PROJECT_ID,
+            PublicationStageRow.stage == stage.value,
+        )
+    )
+
+
+def _require_dependencies(session: Session, stage: PublishStage) -> None:
+    missing = []
+    for dependency in STAGE_DEPENDENCIES[stage]:
+        row = _stage_row(session, dependency)
+        if row is None or row.status != "published":
+            missing.append(dependency.value)
+    if missing:
+        raise PublicationBlocked(
+            f"{stage.value} publication requires published stages: "
+            + ", ".join(missing)
+        )
+
+
+def _set_stage(
+    session: Session,
+    *,
+    stage: PublishStage,
+    summary: dict[str, Any],
+    revision: str = "A",
+) -> PublicationResult:
+    row = _stage_row(session, stage)
+    if row is None:
+        row = PublicationStageRow(
+            id=f"{PROJECT_ID}:{stage.value}",
+            project_id=PROJECT_ID,
+            stage=stage.value,
+            revision=revision,
+            status="published",
+            published_at=_now(),
+            summary_json=summary,
+            provenance_json={
+                "source_type": "digital_bdep_publisher",
+                "source_id": f"PUBLISH-{stage.value.upper()}",
+                "source_revision": revision,
+            },
+        )
+        session.add(row)
+    else:
+        row.revision = revision
+        row.status = "published"
+        row.published_at = _now()
+        row.summary_json = summary
+        row.provenance_json = {
+            "source_type": "digital_bdep_publisher",
+            "source_id": f"PUBLISH-{stage.value.upper()}",
+            "source_revision": revision,
+        }
+    return PublicationResult(
+        stage=stage,
+        status="published",
+        revision=revision,
+        summary=summary,
+    )
+
+
+def _upsert_record(
+    session: Session,
+    *,
+    record_id: str,
+    domain: RecordDomain,
+    name: str,
+    value: Any,
+    unit: str | None,
+    status: str,
+    source_id: str,
+    method: str,
+    object_ids: list[str],
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    provenance = {
+        "source_type": "deterministic_service",
+        "source_id": source_id,
+        "source_revision": "A",
+        "method": method,
+    }
+    row = session.get(EngineeringRecordRow, record_id)
+    if row is None:
+        row = EngineeringRecordRow(
+            id=record_id,
+            project_id=PROJECT_ID,
+            domain=domain.value,
+            name=name,
+            value_json=value,
+            unit=unit,
+            status=status,
+            provenance_json=provenance,
+            metadata_json=metadata or {},
+        )
+        session.add(row)
+    else:
+        row.domain = domain.value
+        row.name = name
+        row.value_json = value
+        row.unit = unit
+        row.status = status
+        row.provenance_json = provenance
+        row.metadata_json = metadata or {}
+
+    session.flush()
+    existing_links = {
+        link.object_id
+        for link in session.scalars(
+            select(RecordObjectLinkRow).where(
+                RecordObjectLinkRow.engineering_record_id == record_id
+            )
+        ).all()
+    }
+    for object_id in object_ids:
+        if object_id not in existing_links:
+            session.add(
+                RecordObjectLinkRow(
+                    engineering_record_id=record_id,
+                    object_id=object_id,
+                    relationship="applies_to",
+                )
+            )
+    return record_id
+
+
+def publication_status(session: Session) -> list[PublicationStatus]:
+    rows = {
+        row.stage: row
+        for row in session.scalars(
+            select(PublicationStageRow).where(
+                PublicationStageRow.project_id == PROJECT_ID
+            )
+        ).all()
+    }
+    result = []
+    for stage in STAGE_ORDER:
+        row = rows.get(stage.value)
+        result.append(
+            PublicationStatus(
+                stage=stage,
+                label=_STAGE_LABELS[stage],
+                status=row.status if row else "not_published",
+                revision=row.revision if row else None,
+                published_at=(
+                    row.published_at.isoformat() if row and row.published_at else None
+                ),
+                dependencies=STAGE_DEPENDENCIES[stage],
+                summary=row.summary_json if row else {},
+            )
+        )
+    return result
+
+
+def publish_design_basis(session: Session) -> PublicationResult:
+    revision = session.get(DesignBasisRevisionRow, "DB-001-A")
+    if revision is None or revision.status != "approved":
+        raise PublicationBlocked("Approved Design Basis DB-001 Rev A is required.")
+    count = len(
+        session.scalars(
+            select(DesignBasisCriterionRow).where(
+                DesignBasisCriterionRow.design_basis_revision_id == "DB-001-A",
+                DesignBasisCriterionRow.status == "approved",
+            )
+        ).all()
+    )
+    result = _set_stage(
+        session,
+        stage=PublishStage.DESIGN_BASIS,
+        summary={
+            "design_basis_id": "DB-001",
+            "revision": "A",
+            "approved_criteria": count,
+        },
+    )
+    session.commit()
+    return result
+
+
+def publish_simulation(session: Session) -> PublicationResult:
+    _require_dependencies(session, PublishStage.SIMULATION)
+    cases = session.scalars(select(SimulationCaseRow)).all()
+    expected = {"SIM-001", "SIM-002", "SIM-003"}
+    available = {case.id for case in cases}
+    if not expected <= available:
+        raise PublicationBlocked("Normal, Maximum and Turndown simulations are required.")
+    result = _set_stage(
+        session,
+        stage=PublishStage.SIMULATION,
+        summary={
+            "cases": ["SIM-001", "SIM-002", "SIM-003"],
+            "case_types": ["normal", "maximum", "turndown"],
+            "topology": "V-101 -> S-102 -> P-101",
+        },
+    )
+    session.commit()
+    return result
+
+
+def publish_configuration(session: Session) -> PublicationResult:
+    _require_dependencies(session, PublishStage.CONFIGURATION)
+    publication = publish_demo_simulation("CASE-NORMAL")
+    match = match_configuration(
+        publication,
+        design_basis_facts=load_configuration_match_facts(session),
+        definitions=load_approved_configurations(session),
+    )
+    if match.status != MatchStatus.EXACT:
+        raise PublicationBlocked(
+            f"Configuration selection requires EXACT match; got {match.status.value}."
+        )
+    result = _set_stage(
+        session,
+        stage=PublishStage.CONFIGURATION,
+        summary={
+            "configuration_id": match.configuration_id,
+            "configuration_version": match.configuration_version,
+            "match_status": match.status.value,
+            "modules": match.engineering_modules,
+        },
+    )
+    session.commit()
+    return result
+
+
+def _process_numbers(session: Session) -> dict[str, float]:
+    maximum = publish_demo_simulation("CASE-MAX")
+    normal = publish_demo_simulation("CASE-NORMAL")
+    max_liquid = next(s for s in maximum.streams if s.id == "STR-S102")
+    normal_liquid = next(s for s in normal.streams if s.id == "STR-S102")
+
+    vessel_margin = float(_criterion(session, "DBC-VESSEL-SIZING-MARGIN")) / 100.0
+    holdup_minutes = float(_criterion(session, "DBC-VESSEL-HOLDUP"))
+    pump_flow_margin = float(_criterion(session, "DBC-PUMP-FLOW-MARGIN")) / 100.0
+    pump_head_margin = float(_criterion(session, "DBC-PUMP-HEAD-MARGIN")) / 100.0
+    pump_efficiency = float(_criterion(session, "DBC-PUMP-EFFICIENCY")) / 100.0
+    motor_margin = float(_criterion(session, "DBC-MOTOR-MARGIN")) / 100.0
+
+    vessel_design_flow_tph = max_liquid.mass_flow * (1.0 + vessel_margin)
+    volumetric_m3h = vessel_design_flow_tph * 1000.0 / float(max_liquid.density)
+    holdup_volume_m3 = volumetric_m3h * holdup_minutes / 60.0
+
+    rated_flow_tph = max_liquid.mass_flow * (1.0 + pump_flow_margin)
+    dp_bar = maximum.streams[-1].pressure - max_liquid.pressure
+    raw_head_m = dp_bar * 100000.0 / (float(max_liquid.density) * 9.80665)
+    rated_head_m = raw_head_m * (1.0 + pump_head_margin)
+    q_m3s = rated_flow_tph * 1000.0 / float(max_liquid.density) / 3600.0
+    hydraulic_kw = (
+        float(max_liquid.density) * 9.80665 * q_m3s * rated_head_m / 1000.0
+    )
+    shaft_kw = hydraulic_kw / pump_efficiency
+    motor_kw = shaft_kw * (1.0 + motor_margin)
+
+    return {
+        "max_liquid_flow_tph": max_liquid.mass_flow,
+        "normal_liquid_flow_tph": normal_liquid.mass_flow,
+        "liquid_density_kgm3": float(max_liquid.density),
+        "vessel_design_flow_tph": vessel_design_flow_tph,
+        "vessel_volumetric_flow_m3h": volumetric_m3h,
+        "holdup_volume_m3": holdup_volume_m3,
+        "pump_rated_flow_tph": rated_flow_tph,
+        "pump_dp_bar": dp_bar,
+        "pump_raw_head_m": raw_head_m,
+        "pump_rated_head_m": rated_head_m,
+        "pump_volumetric_flow_m3s": q_m3s,
+        "pump_hydraulic_kw": hydraulic_kw,
+        "pump_shaft_kw": shaft_kw,
+        "motor_preliminary_kw": motor_kw,
+    }
+
+
+_STANDARD_NPS_IN = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, 12.0]
+
+# Configured demo internal-diameter table. These values are deliberately kept
+# inside the project configuration rather than claimed as a standards-certified
+# pipe schedule database. Final projects should load the approved piping spec.
+_DEMO_PIPE_ID_IN = {
+    1.0: 1.049,
+    1.5: 1.610,
+    2.0: 2.067,
+    3.0: 3.068,
+    4.0: 4.026,
+    6.0: 6.065,
+    8.0: 7.981,
+    10.0: 10.020,
+    12.0: 11.938,
+}
+
+
+def _stream_case_table(stream_id: str) -> list[dict[str, Any]]:
+    rows = []
+    for design_case_id, label in [
+        ("CASE-NORMAL", "Normal"),
+        ("CASE-MAX", "Maximum"),
+        ("CASE-TURNDOWN", "Turndown"),
+    ]:
+        publication = publish_demo_simulation(design_case_id)
+        stream = next(item for item in publication.streams if item.id == stream_id)
+        rows.append(
+            {
+                "case": label,
+                "design_case_id": design_case_id,
+                "simulation_case_id": publication.simulation_case_id,
+                "stream_number": stream.stream_number,
+                "mass_flow_tph": float(stream.mass_flow),
+                "pressure_barg": float(stream.pressure),
+                "temperature_degC": float(stream.temperature),
+                "density_kgm3": float(stream.density) if stream.density is not None else None,
+                "viscosity_cp": float(stream.viscosity) if stream.viscosity is not None else None,
+            }
+        )
+    return rows
+
+
+def _darcy_friction_factor(
+    reynolds: float,
+    *,
+    roughness_m: float,
+    diameter_m: float,
+) -> float:
+    if reynolds <= 0:
+        return 0.0
+    if reynolds < 2300.0:
+        return 64.0 / reynolds
+    return 0.25 / (
+        math.log10(
+            roughness_m / (3.7 * diameter_m)
+            + 5.74 / (reynolds**0.9)
+        )
+        ** 2
+    )
+
+
+def _hydraulic_point(
+    *,
+    flow_tph: float,
+    density_kgm3: float,
+    viscosity_cp: float,
+    nps_in: float,
+    roughness_mm: float,
+    equivalent_length_m: float,
+) -> dict[str, float]:
+    q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
+    internal_diameter_in = _DEMO_PIPE_ID_IN[nps_in]
+    diameter_m = internal_diameter_in * 0.0254
+    area_m2 = math.pi * diameter_m**2 / 4.0
+    velocity_ms = q_m3s / area_m2 if area_m2 else 0.0
+    viscosity_pa_s = viscosity_cp * 0.001
+    reynolds = (
+        density_kgm3 * velocity_ms * diameter_m / viscosity_pa_s
+        if viscosity_pa_s > 0
+        else 0.0
+    )
+    roughness_m = roughness_mm / 1000.0
+    friction_factor = _darcy_friction_factor(
+        reynolds,
+        roughness_m=roughness_m,
+        diameter_m=diameter_m,
+    )
+    dynamic_pressure_pa = density_kgm3 * velocity_ms**2 / 2.0
+    friction_dp_pa = (
+        friction_factor
+        * (equivalent_length_m / diameter_m)
+        * dynamic_pressure_pa
+        if diameter_m > 0
+        else 0.0
+    )
+    return {
+        "flow_m3s": q_m3s,
+        "internal_diameter_in": internal_diameter_in,
+        "internal_diameter_m": diameter_m,
+        "area_m2": area_m2,
+        "velocity_ms": velocity_ms,
+        "reynolds": reynolds,
+        "friction_factor": friction_factor,
+        "friction_dp_bar": friction_dp_pa / 100000.0,
+    }
+
+
+def _select_nps(
+    flow_tph: float,
+    density_kgm3: float,
+    viscosity_cp: float,
+    *,
+    max_velocity_ms: float,
+    roughness_mm: float,
+    equivalent_length_m: float,
+    max_friction_dp_bar: float,
+) -> dict[str, Any]:
+    q_m3s = flow_tph * 1000.0 / density_kgm3 / 3600.0
+    required_area_m2 = q_m3s / max_velocity_ms
+    required_d_m = math.sqrt(4.0 * required_area_m2 / math.pi)
+    required_in = required_d_m / 0.0254
+
+    candidate_checks = []
+    for size in _STANDARD_NPS_IN:
+        point = _hydraulic_point(
+            flow_tph=flow_tph,
+            density_kgm3=density_kgm3,
+            viscosity_cp=viscosity_cp,
+            nps_in=size,
+            roughness_mm=roughness_mm,
+            equivalent_length_m=equivalent_length_m,
+        )
+        velocity_ok = point["velocity_ms"] <= max_velocity_ms
+        dp_ok = point["friction_dp_bar"] <= max_friction_dp_bar
+        candidate_checks.append(
+            {
+                "candidate_nps_in": size,
+                "configured_internal_diameter_in": round(point["internal_diameter_in"], 4),
+                "area_m2": round(point["area_m2"], 6),
+                "velocity_ms": round(point["velocity_ms"], 3),
+                "velocity_limit_ms": max_velocity_ms,
+                "reynolds": round(point["reynolds"], 0),
+                "friction_factor": round(point["friction_factor"], 5),
+                "equivalent_length_m": equivalent_length_m,
+                "friction_dp_bar": round(point["friction_dp_bar"], 4),
+                "friction_dp_limit_bar": max_friction_dp_bar,
+                "velocity_check": "PASS" if velocity_ok else "FAIL",
+                "pressure_drop_check": "PASS" if dp_ok else "FAIL",
+                "result": "PASS" if velocity_ok and dp_ok else "FAIL",
+            }
+        )
+
+    passing = [
+        row["candidate_nps_in"]
+        for row in candidate_checks
+        if row["result"] == "PASS"
+    ]
+    if not passing:
+        raise PublicationBlocked(
+            "No configured demo NPS satisfies both velocity and frictional "
+            f"pressure-drop criteria for {flow_tph:g} t/h."
+        )
+
+    selected = passing[0]
+    selected_row = next(
+        row for row in candidate_checks
+        if row["candidate_nps_in"] == selected
+    )
+    selected_index = _STANDARD_NPS_IN.index(selected)
+    previous_size = (
+        _STANDARD_NPS_IN[selected_index - 1]
+        if selected_index > 0
+        else None
+    )
+    previous_row = (
+        next(
+            row for row in candidate_checks
+            if row["candidate_nps_in"] == previous_size
+        )
+        if previous_size is not None
+        else None
+    )
+
+    return {
+        "flow_m3s": q_m3s,
+        "required_area_m2": required_area_m2,
+        "required_diameter_m": required_d_m,
+        "required_diameter_in": required_in,
+        "selected_nps_in": selected,
+        "selected_internal_diameter_in": selected_row["configured_internal_diameter_in"],
+        "selected_velocity_ms": selected_row["velocity_ms"],
+        "selected_reynolds": selected_row["reynolds"],
+        "selected_friction_factor": selected_row["friction_factor"],
+        "selected_friction_dp_bar": selected_row["friction_dp_bar"],
+        "candidate_checks": candidate_checks,
+        "previous_candidate": previous_row,
+    }
+
+
+def _hydraulic_for_case(
+    *,
+    flow_tph: float,
+    density_kgm3: float,
+    viscosity_cp: float,
+    nps_in: float,
+    roughness_mm: float,
+    equivalent_length_m: float,
+) -> dict[str, float]:
+    return _hydraulic_point(
+        flow_tph=flow_tph,
+        density_kgm3=density_kgm3,
+        viscosity_cp=viscosity_cp,
+        nps_in=nps_in,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=equivalent_length_m,
+    )
+
+
+def _line_number(
+    *,
+    nps_in: float,
+    fluid_code: str,
+    sequence: str,
+    piping_class: str,
+) -> str:
+    size_text = str(int(nps_in)) if float(nps_in).is_integer() else str(nps_in)
+    return f'{size_text}"-{fluid_code}-{sequence}-{piping_class}'
+
+
+def _line_sizing_records(session: Session, n: dict[str, float]) -> list[dict[str, Any]]:
+    fluid_code = str(_criterion(session, "DBC-LINE-FLUID-CODE"))
+    piping_class = str(_criterion(session, "DBC-LINE-PIPING-CLASS"))
+    roughness_mm = float(_criterion(session, "DBC-LINE-ROUGHNESS"))
+
+    suction_limit = float(_criterion(session, "DBC-LINE-SUCTION-VEL"))
+    discharge_limit = float(_criterion(session, "DBC-LINE-DISCHARGE-VEL"))
+    recycle_limit = float(_criterion(session, "DBC-LINE-RECYCLE-VEL"))
+    suction_dp_limit = float(_criterion(session, "DBC-LINE-SUCTION-DP"))
+    discharge_dp_limit = float(_criterion(session, "DBC-LINE-DISCHARGE-DP"))
+    recycle_dp_limit = float(_criterion(session, "DBC-LINE-RECYCLE-DP"))
+    suction_length = float(_criterion(session, "DBC-LINE-SUCTION-EQLEN"))
+    discharge_length = float(_criterion(session, "DBC-LINE-DISCHARGE-EQLEN"))
+    recycle_length = float(_criterion(session, "DBC-LINE-RECYCLE-EQLEN"))
+
+    max_case = publish_demo_simulation("CASE-MAX")
+    max_liquid = next(item for item in max_case.streams if item.id == "STR-S102")
+    density = float(max_liquid.density)
+    viscosity_cp = float(max_liquid.viscosity)
+
+    suction = _select_nps(
+        max_liquid.mass_flow,
+        density,
+        viscosity_cp,
+        max_velocity_ms=suction_limit,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=suction_length,
+        max_friction_dp_bar=suction_dp_limit,
+    )
+    discharge = _select_nps(
+        max_liquid.mass_flow,
+        density,
+        viscosity_cp,
+        max_velocity_ms=discharge_limit,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=discharge_length,
+        max_friction_dp_bar=discharge_dp_limit,
+    )
+
+    min_flow_fraction = float(_criterion(session, "DBC-PUMP-MIN-FLOW-FRACTION")) / 100.0
+    recycle_design_tph = n["pump_rated_flow_tph"] * min_flow_fraction
+    recycle = _select_nps(
+        recycle_design_tph,
+        density,
+        viscosity_cp,
+        max_velocity_ms=recycle_limit,
+        roughness_mm=roughness_mm,
+        equivalent_length_m=recycle_length,
+        max_friction_dp_bar=recycle_dp_limit,
+    )
+
+    case_rows = _stream_case_table("STR-S102")
+
+    def selected_case_rows(selected: dict[str, Any], eq_length: float) -> list[dict[str, Any]]:
+        rows = []
+        for row in case_rows:
+            point = _hydraulic_for_case(
+                flow_tph=row["mass_flow_tph"],
+                density_kgm3=row["density_kgm3"],
+                viscosity_cp=row["viscosity_cp"],
+                nps_in=selected["selected_nps_in"],
+                roughness_mm=roughness_mm,
+                equivalent_length_m=eq_length,
+            )
+            rows.append(
+                {
+                    **row,
+                    "selected_nps_in": selected["selected_nps_in"],
+                    "internal_diameter_in": round(point["internal_diameter_in"], 4),
+                    "velocity_ms": round(point["velocity_ms"], 3),
+                    "reynolds": round(point["reynolds"], 0),
+                    "friction_factor": round(point["friction_factor"], 5),
+                    "friction_dp_bar": round(point["friction_dp_bar"], 4),
+                }
+            )
+        return rows
+
+    suction_cases = selected_case_rows(suction, suction_length)
+    discharge_cases = selected_case_rows(discharge, discharge_length)
+
+    recycle_cases = []
+    for row in case_rows:
+        required_recycle = max(recycle_design_tph - row["mass_flow_tph"], 0.0)
+        point = _hydraulic_for_case(
+            flow_tph=required_recycle,
+            density_kgm3=row["density_kgm3"],
+            viscosity_cp=row["viscosity_cp"],
+            nps_in=recycle["selected_nps_in"],
+            roughness_mm=roughness_mm,
+            equivalent_length_m=recycle_length,
+        )
+        recycle_cases.append(
+            {
+                **row,
+                "required_recycle_tph": round(required_recycle, 3),
+                "selected_nps_in": recycle["selected_nps_in"],
+                "internal_diameter_in": round(point["internal_diameter_in"], 4),
+                "velocity_ms": round(point["velocity_ms"], 3),
+                "reynolds": round(point["reynolds"], 0),
+                "friction_factor": round(point["friction_factor"], 5),
+                "friction_dp_bar": round(point["friction_dp_bar"], 4),
+            }
+        )
+
+    recycle_design_point = _hydraulic_for_case(
+        flow_tph=recycle_design_tph,
+        density_kgm3=density,
+        viscosity_cp=viscosity_cp,
+        nps_in=recycle["selected_nps_in"],
+        roughness_mm=roughness_mm,
+        equivalent_length_m=recycle_length,
+    )
+    recycle_cases.append(
+        {
+            "case": "Minimum-flow design case",
+            "design_case_id": "DERIVED-MIN-FLOW",
+            "simulation_case_id": None,
+            "stream_number": None,
+            "mass_flow_tph": round(recycle_design_tph, 3),
+            "pressure_barg": None,
+            "temperature_degC": float(max_liquid.temperature),
+            "density_kgm3": density,
+            "viscosity_cp": viscosity_cp,
+            "required_recycle_tph": round(recycle_design_tph, 3),
+            "selected_nps_in": recycle["selected_nps_in"],
+            "internal_diameter_in": round(recycle_design_point["internal_diameter_in"], 4),
+            "velocity_ms": round(recycle_design_point["velocity_ms"], 3),
+            "reynolds": round(recycle_design_point["reynolds"], 0),
+            "friction_factor": round(recycle_design_point["friction_factor"], 5),
+            "friction_dp_bar": round(recycle_design_point["friction_dp_bar"], 4),
+        }
+    )
+
+    def record(
+        *,
+        record_id: str,
+        service: str,
+        stream_number: str | None,
+        simulator_stream_id: str | None,
+        sequence: str,
+        sizing: dict[str, Any],
+        velocity_criterion_id: str,
+        velocity_limit: float,
+        dp_criterion_id: str,
+        dp_limit: float,
+        equivalent_length_criterion_id: str,
+        equivalent_length_m: float,
+        design_flow_tph: float,
+        case_results: list[dict[str, Any]],
+        object_ids: list[str],
+        governing_case: str,
+        governing_reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "record_id": record_id,
+            "service": service,
+            "stream_number": stream_number,
+            "simulator_stream_id": simulator_stream_id,
+            "sequence": sequence,
+            "line_number": _line_number(
+                nps_in=sizing["selected_nps_in"],
+                fluid_code=fluid_code,
+                sequence=sequence,
+                piping_class=piping_class,
+            ),
+            "velocity_criterion_id": velocity_criterion_id,
+            "criterion_velocity_ms": velocity_limit,
+            "pressure_drop_criterion_id": dp_criterion_id,
+            "friction_dp_limit_bar": dp_limit,
+            "equivalent_length_criterion_id": equivalent_length_criterion_id,
+            "equivalent_length_m": equivalent_length_m,
+            "roughness_mm": roughness_mm,
+            "design_flow_tph": design_flow_tph,
+            "density_kgm3": density,
+            "viscosity_cp": viscosity_cp,
+            "flow_m3s": sizing["flow_m3s"],
+            "required_area_m2": sizing["required_area_m2"],
+            "required_diameter_m": sizing["required_diameter_m"],
+            "required_diameter_in": sizing["required_diameter_in"],
+            "selected_nps_in": sizing["selected_nps_in"],
+            "selected_internal_diameter_in": sizing["selected_internal_diameter_in"],
+            "design_velocity_ms": sizing["selected_velocity_ms"],
+            "design_reynolds": sizing["selected_reynolds"],
+            "design_friction_factor": sizing["selected_friction_factor"],
+            "design_friction_dp_bar": sizing["selected_friction_dp_bar"],
+            "candidate_checks": sizing["candidate_checks"],
+            "previous_candidate": sizing["previous_candidate"],
+            "case_results": case_results,
+            "object_ids": object_ids,
+            "governing_case": governing_case,
+            "governing_reason": governing_reason,
+        }
+
+    return [
+        record(
+            record_id="LINE-1102-SIZING",
+            service="V-101 liquid outlet / P-101 suction",
+            stream_number="1102",
+            simulator_stream_id="S-102",
+            sequence="1102",
+            sizing=suction,
+            velocity_criterion_id="DBC-LINE-SUCTION-VEL",
+            velocity_limit=suction_limit,
+            dp_criterion_id="DBC-LINE-SUCTION-DP",
+            dp_limit=suction_dp_limit,
+            equivalent_length_criterion_id="DBC-LINE-SUCTION-EQLEN",
+            equivalent_length_m=suction_length,
+            design_flow_tph=float(max_liquid.mass_flow),
+            case_results=suction_cases,
+            object_ids=["EQ-V101", "EQ-P101"],
+            governing_case="Maximum",
+            governing_reason="Maximum case has the highest published liquid flow in stream 1102 and therefore the highest selected-size velocity/friction loss.",
+        ),
+        record(
+            record_id="LINE-1103-SIZING",
+            service="P-101 discharge to downstream process",
+            stream_number="1103",
+            simulator_stream_id="S-103",
+            sequence="1103",
+            sizing=discharge,
+            velocity_criterion_id="DBC-LINE-DISCHARGE-VEL",
+            velocity_limit=discharge_limit,
+            dp_criterion_id="DBC-LINE-DISCHARGE-DP",
+            dp_limit=discharge_dp_limit,
+            equivalent_length_criterion_id="DBC-LINE-DISCHARGE-EQLEN",
+            equivalent_length_m=discharge_length,
+            design_flow_tph=float(max_liquid.mass_flow),
+            case_results=discharge_cases,
+            object_ids=["EQ-P101"],
+            governing_case="Maximum",
+            governing_reason="Maximum case has the highest published pump discharge flow and selected-size friction loss.",
+        ),
+        record(
+            record_id="LINE-1190-SIZING",
+            service="P-101 minimum-flow recycle to V-101",
+            stream_number=None,
+            simulator_stream_id=None,
+            sequence="1190",
+            sizing=recycle,
+            velocity_criterion_id="DBC-LINE-RECYCLE-VEL",
+            velocity_limit=recycle_limit,
+            dp_criterion_id="DBC-LINE-RECYCLE-DP",
+            dp_limit=recycle_dp_limit,
+            equivalent_length_criterion_id="DBC-LINE-RECYCLE-EQLEN",
+            equivalent_length_m=recycle_length,
+            design_flow_tph=recycle_design_tph,
+            case_results=recycle_cases,
+            object_ids=["EQ-P101", "VLV-FCV101", "EQ-V101"],
+            governing_case="Minimum-flow design case",
+            governing_reason="Recycle line is sized for the dedicated minimum-flow protection duty; Normal/Maximum/Turndown process flow alone does not define the recycle design flow.",
+        ),
+    ]
+
+
+def _calculation_detail(
+    *,
+    inputs: list[dict[str, Any]],
+    criteria: list[dict[str, Any]],
+    case_results: list[dict[str, Any]],
+    governing_case: str,
+    governing_reason: str,
+    outputs: list[dict[str, Any]],
+    method: str,
+    trace: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    detail = {
+        "inputs": inputs,
+        "criteria": criteria,
+        "case_results": case_results,
+        "governing_case": governing_case,
+        "governing_reason": governing_reason,
+        "outputs": outputs,
+        "method": method,
+    }
+    if trace:
+        detail["trace"] = trace
+    return {"calculation_detail": detail}
+
+
+def _trace(
+    *,
+    trace_id: str,
+    calculation_type: str,
+    steps: list[dict[str, Any]],
+    input_sources: list[dict[str, Any]],
+    validation_checks: list[dict[str, Any]],
+    assumptions: list[str],
+    limitations: list[str],
+    downstream_consumers: list[str],
+    selection_checks: list[dict[str, Any]] | None = None,
+    service_version: str = "demo-1.0",
+    qualification: str = "MVP deterministic engineering service",
+) -> dict[str, Any]:
+    return {
+        "trace_id": trace_id,
+        "calculation_type": calculation_type,
+        "service_version": service_version,
+        "qualification": qualification,
+        "input_sources": input_sources,
+        "steps": steps,
+        "selection_checks": selection_checks or [],
+        "validation_checks": validation_checks,
+        "assumptions": assumptions,
+        "limitations": limitations,
+        "downstream_consumers": downstream_consumers,
+    }
+
+
+_DEMO_PSV_ORIFICE_AREAS_IN2 = [
+    ("D", 0.110),
+    ("E", 0.196),
+    ("F", 0.307),
+    ("G", 0.503),
+    ("H", 0.785),
+    ("J", 1.287),
+    ("K", 1.838),
+    ("L", 2.853),
+    ("M", 3.600),
+    ("N", 4.340),
+    ("P", 6.380),
+    ("Q", 11.050),
+    ("R", 16.000),
+    ("T", 26.000),
+]
+
+
+def _psv_demo_vapor_sizing(session: Session) -> dict[str, Any]:
+    """Deterministic demo vapor-relief sizing.
+
+    This is deliberately transparent and self-contained so the viewer can show
+    every step. It is not a substitute for the company's qualified relief
+    calculation service or licensed standard implementation.
+    """
+    maximum = publish_demo_simulation("CASE-MAX")
+    vapor = next(item for item in maximum.streams if item.id == "STR-S101")
+
+    set_barg = float(_criterion(session, "DBC-PSV-SET-PRESSURE"))
+    accumulation_pct = float(_criterion(session, "DBC-PSV-ACCUMULATION"))
+    atmospheric_bara = float(_criterion(session, "DBC-ATMOSPHERIC-PRESSURE"))
+    relieving_temp_c = float(_criterion(session, "DBC-PSV-RELIEVING-TEMP"))
+    molecular_weight = float(_criterion(session, "DBC-PSV-VAPOR-MW"))
+    heat_capacity_ratio = float(_criterion(session, "DBC-PSV-VAPOR-K"))
+    compressibility = float(_criterion(session, "DBC-PSV-VAPOR-Z"))
+    kd = float(_criterion(session, "DBC-PSV-KD"))
+    kb = float(_criterion(session, "DBC-PSV-KB"))
+    kc = float(_criterion(session, "DBC-PSV-KC"))
+    backpressure_bara = float(_criterion(session, "DBC-PSV-BACKPRESSURE"))
+
+    relieving_pressure_barg = set_barg * (1.0 + accumulation_pct / 100.0)
+    relieving_pressure_bara = relieving_pressure_barg + atmospheric_bara
+    relieving_pressure_pa = relieving_pressure_bara * 100000.0
+    relieving_temp_k = relieving_temp_c + 273.15
+
+    # Blocked-vapor-outlet demo load: maximum simulated vapor generation/outlet
+    # rate. The full feed rate is retained in the scenario register but is not
+    # silently used as a vapor load.
+    relief_load_tph = float(vapor.mass_flow)
+    relief_load_kg_s = relief_load_tph * 1000.0 / 3600.0
+
+    universal_gas_constant = 8314.462618  # J/(kmol.K)
+    specific_gas_constant = universal_gas_constant / molecular_weight
+    critical_pressure_ratio = (
+        2.0 / (heat_capacity_ratio + 1.0)
+    ) ** (heat_capacity_ratio / (heat_capacity_ratio - 1.0))
+    actual_pressure_ratio = backpressure_bara / relieving_pressure_bara
+    choked = actual_pressure_ratio <= critical_pressure_ratio
+    if not choked:
+        raise PublicationBlocked(
+            "Demo PSV vapor sizing currently supports choked-flow cases only. "
+            "Backpressure ratio exceeds the critical pressure ratio."
+        )
+
+    ideal_mass_flux = relieving_pressure_pa * math.sqrt(
+        heat_capacity_ratio
+        / (compressibility * specific_gas_constant * relieving_temp_k)
+        * (
+            2.0 / (heat_capacity_ratio + 1.0)
+        ) ** (
+            (heat_capacity_ratio + 1.0)
+            / (heat_capacity_ratio - 1.0)
+        )
+    )
+    corrected_mass_flux = ideal_mass_flux * kd * kb * kc
+    required_area_m2 = relief_load_kg_s / corrected_mass_flux
+    required_area_mm2 = required_area_m2 * 1_000_000.0
+    required_area_in2 = required_area_m2 / (0.0254**2)
+
+    selection_checks = []
+    selected_letter = None
+    selected_area_in2 = None
+    for letter, area_in2 in _DEMO_PSV_ORIFICE_AREAS_IN2:
+        result = "PASS" if area_in2 >= required_area_in2 else "FAIL"
+        selection_checks.append(
+            {
+                "orifice": letter,
+                "area_in2": area_in2,
+                "area_mm2": round(area_in2 * 645.16, 1),
+                "required_area_in2": round(required_area_in2, 4),
+                "margin_in2": round(area_in2 - required_area_in2, 4),
+                "result": result,
+            }
+        )
+        if selected_letter is None and result == "PASS":
+            selected_letter = letter
+            selected_area_in2 = area_in2
+
+    if selected_letter is None or selected_area_in2 is None:
+        raise PublicationBlocked(
+            "Required demo relief area exceeds the largest configured standard "
+            "orifice. Multiple-valve or larger-valve review is required."
+        )
+
+    selected_area_m2 = selected_area_in2 * 0.0254**2
+    selected_capacity_tph = (
+        corrected_mass_flux * selected_area_m2 * 3600.0 / 1000.0
+    )
+    area_utilization_pct = required_area_in2 / selected_area_in2 * 100.0
+
+    return {
+        "scenario": "Blocked vapor outlet",
+        "relief_load_tph": relief_load_tph,
+        "relief_load_kg_s": relief_load_kg_s,
+        "set_pressure_barg": set_barg,
+        "accumulation_pct": accumulation_pct,
+        "relieving_pressure_barg": relieving_pressure_barg,
+        "atmospheric_pressure_bara": atmospheric_bara,
+        "relieving_pressure_bara": relieving_pressure_bara,
+        "backpressure_bara": backpressure_bara,
+        "actual_pressure_ratio": actual_pressure_ratio,
+        "critical_pressure_ratio": critical_pressure_ratio,
+        "choked": choked,
+        "relieving_temp_c": relieving_temp_c,
+        "relieving_temp_k": relieving_temp_k,
+        "molecular_weight": molecular_weight,
+        "heat_capacity_ratio": heat_capacity_ratio,
+        "compressibility": compressibility,
+        "specific_gas_constant": specific_gas_constant,
+        "kd": kd,
+        "kb": kb,
+        "kc": kc,
+        "ideal_mass_flux_kg_m2_s": ideal_mass_flux,
+        "corrected_mass_flux_kg_m2_s": corrected_mass_flux,
+        "required_area_m2": required_area_m2,
+        "required_area_mm2": required_area_mm2,
+        "required_area_in2": required_area_in2,
+        "selected_orifice": selected_letter,
+        "selected_area_in2": selected_area_in2,
+        "selected_area_m2": selected_area_m2,
+        "selected_area_mm2": selected_area_in2 * 645.16,
+        "selected_capacity_tph": selected_capacity_tph,
+        "area_utilization_pct": area_utilization_pct,
+        "selection_checks": selection_checks,
+    }
+
+
+def publish_process(session: Session) -> PublicationResult:
+    _require_dependencies(session, PublishStage.PROCESS)
+    n = _process_numbers(session)
+    record_ids = []
+
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="CALC-V101-HOLDUP",
+            domain=RecordDomain.PROCESS_CALC,
+            name="Vessel preliminary liquid holdup sizing",
+            value={
+                "governing_case": "SIM-002 / Maximum",
+                "maximum_liquid_flow_tph": round(n["max_liquid_flow_tph"], 3),
+                "design_liquid_flow_tph": round(n["vessel_design_flow_tph"], 3),
+                "required_holdup_volume_m3": round(n["holdup_volume_m3"], 3),
+            },
+            unit=None,
+            status="process_checked_demo",
+            source_id="CALC-V101-HOLDUP",
+            method="max liquid flow × vessel margin; volumetric flow × holdup time",
+            object_ids=["EQ-V101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Published liquid stream", "value": "1102 / S-102"},
+                    {"name": "Maximum liquid flow", "value": round(n["max_liquid_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Liquid density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-VESSEL-SIZING-MARGIN", "name": "Vessel sizing flow margin", "value": _criterion(session, "DBC-VESSEL-SIZING-MARGIN"), "unit": "%"},
+                    {"criterion_id": "DBC-VESSEL-HOLDUP", "name": "Liquid holdup criterion", "value": _criterion(session, "DBC-VESSEL-HOLDUP"), "unit": "min"},
+                ],
+                case_results=[
+                    {
+                        **row,
+                        "design_flow_tph": round(row["mass_flow_tph"] * (1.0 + float(_criterion(session, "DBC-VESSEL-SIZING-MARGIN")) / 100.0), 3),
+                        "required_holdup_volume_m3": round(
+                            (
+                                row["mass_flow_tph"]
+                                * (1.0 + float(_criterion(session, "DBC-VESSEL-SIZING-MARGIN")) / 100.0)
+                                * 1000.0
+                                / row["density_kgm3"]
+                            )
+                            * float(_criterion(session, "DBC-VESSEL-HOLDUP"))
+                            / 60.0,
+                            3,
+                        ),
+                    }
+                    for row in _stream_case_table("STR-S102")
+                ],
+                governing_case="Maximum",
+                governing_reason="Maximum case has the highest published liquid flow and therefore the largest preliminary liquid-holdup requirement.",
+                outputs=[
+                    {"name": "Design liquid flow", "value": round(n["vessel_design_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Required holdup volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+                ],
+                method="Deterministic preliminary holdup sizing service.",
+                trace=_trace(
+                    trace_id="TRACE-CALC-V101-HOLDUP",
+                    calculation_type="vessel_liquid_holdup_sizing",
+                    input_sources=[
+                        {"source": "SIM-002", "item": "Stream 1102 / S-102", "field": "mass_flow", "value": round(n["max_liquid_flow_tph"], 3), "unit": "t/h"},
+                        {"source": "SIM-002", "item": "Stream 1102 / S-102", "field": "density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-VESSEL-SIZING-MARGIN", "value": _criterion(session, "DBC-VESSEL-SIZING-MARGIN"), "unit": "%"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-VESSEL-HOLDUP", "value": _criterion(session, "DBC-VESSEL-HOLDUP"), "unit": "min"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Select governing liquid flow",
+                            "equation": "W_gov = max(W_normal, W_maximum, W_turndown)",
+                            "substitution": f"W_gov = max(80, {n['max_liquid_flow_tph']:.3f}, 48) t/h",
+                            "result": round(n["max_liquid_flow_tph"], 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Apply vessel sizing flow margin",
+                            "equation": "W_design = W_gov × (1 + margin/100)",
+                            "substitution": f"{n['max_liquid_flow_tph']:.3f} × (1 + {float(_criterion(session, 'DBC-VESSEL-SIZING-MARGIN')):.3f}/100)",
+                            "result": round(n["vessel_design_flow_tph"], 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Convert mass flow to volumetric liquid flow",
+                            "equation": "Q = W_design × 1000 / rho",
+                            "substitution": f"{n['vessel_design_flow_tph']:.3f} × 1000 / {n['liquid_density_kgm3']:.3f}",
+                            "result": round(n["vessel_volumetric_flow_m3h"], 3),
+                            "unit": "m3/h",
+                        },
+                        {
+                            "step": 4,
+                            "title": "Calculate required normal liquid holdup volume",
+                            "equation": "V_holdup = Q × t_holdup / 60",
+                            "substitution": f"{n['vessel_volumetric_flow_m3h']:.3f} × {float(_criterion(session, 'DBC-VESSEL-HOLDUP')):.3f} / 60",
+                            "result": round(n["holdup_volume_m3"], 3),
+                            "unit": "m3",
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Density > 0", "actual": round(n["liquid_density_kgm3"], 3), "criterion": "> 0 kg/m3", "result": "PASS"},
+                        {"check": "Sizing margin criterion approved", "actual": _criterion(session, "DBC-VESSEL-SIZING-MARGIN"), "criterion": "Approved DB-001 criterion", "result": "PASS"},
+                        {"check": "Holdup time criterion approved", "actual": _criterion(session, "DBC-VESSEL-HOLDUP"), "criterion": "Approved DB-001 criterion", "result": "PASS"},
+                        {"check": "Calculated holdup volume positive", "actual": round(n["holdup_volume_m3"], 3), "criterion": "> 0 m3", "result": "PASS"},
+                    ],
+                    assumptions=[
+                        "Maximum-case stream 1102 density is used for the preliminary liquid holdup calculation.",
+                        "This service sizes liquid holdup only; vapor disengagement and vessel geometry are not yet calculated.",
+                    ],
+                    limitations=[
+                        "No vessel diameter, tangent-to-tangent length, L/D ratio, surge volume, nozzle sizing, internals or vapor-disengagement sizing is included yet.",
+                        "Final mechanical dimensions remain gated to later qualified vessel-sizing and mechanical design services.",
+                    ],
+                    downstream_consumers=[
+                        "V-101 process datasheet",
+                        "V-101 mechanical datasheet basis",
+                        "V-101 demo cost estimate",
+                        "BDEP equipment summary",
+                    ],
+                ),
+            ),
+        )
+    )
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="CALC-P101-RATED-FLOW",
+            domain=RecordDomain.PROCESS_CALC,
+            name="Pump preliminary rated duty",
+            value={
+                "governing_case": "SIM-002 / Maximum",
+                "rated_flow_tph": round(n["pump_rated_flow_tph"], 3),
+                "rated_head_m": round(n["pump_rated_head_m"], 3),
+                "shaft_power_kw": round(n["pump_shaft_kw"], 3),
+                "preliminary_motor_kw": round(n["motor_preliminary_kw"], 3),
+            },
+            unit=None,
+            status="process_checked_demo",
+            source_id="CALC-P101-001",
+            method="maximum simulated duty + Design Basis margins",
+            object_ids=["EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Pump suction stream", "value": "1102 / S-102"},
+                    {"name": "Pump discharge stream", "value": "1103 / S-103"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-PUMP-FLOW-MARGIN", "name": "Rated-flow margin", "value": _criterion(session, "DBC-PUMP-FLOW-MARGIN"), "unit": "%"},
+                    {"criterion_id": "DBC-PUMP-HEAD-MARGIN", "name": "Head margin", "value": _criterion(session, "DBC-PUMP-HEAD-MARGIN"), "unit": "%"},
+                    {"criterion_id": "DBC-PUMP-EFFICIENCY", "name": "Preliminary efficiency", "value": _criterion(session, "DBC-PUMP-EFFICIENCY"), "unit": "%"},
+                    {"criterion_id": "DBC-MOTOR-MARGIN", "name": "Motor margin", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                ],
+                case_results=[
+                    {
+                        "case": label,
+                        "design_case_id": design_case_id,
+                        "simulation_case_id": pub.simulation_case_id,
+                        "suction_flow_tph": round(suc.mass_flow, 3),
+                        "suction_pressure_barg": round(suc.pressure, 3),
+                        "discharge_pressure_barg": round(dis.pressure, 3),
+                        "raw_differential_head_m": round(
+                            (dis.pressure - suc.pressure) * 100000.0 / (float(suc.density) * 9.80665),
+                            3,
+                        ),
+                    }
+                    for design_case_id, label in [
+                        ("CASE-NORMAL", "Normal"),
+                        ("CASE-MAX", "Maximum"),
+                        ("CASE-TURNDOWN", "Turndown"),
+                    ]
+                    for pub in [publish_demo_simulation(design_case_id)]
+                    for suc in [next(item for item in pub.streams if item.id == "STR-S102")]
+                    for dis in [next(item for item in pub.streams if item.id == "STR-S103")]
+                ],
+                governing_case="Maximum",
+                governing_reason="Maximum case has the highest published liquid flow and largest pump differential pressure in the current simulation set.",
+                outputs=[
+                    {"name": "Rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Rated head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                    {"name": "Shaft power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                    {"name": "Preliminary motor", "value": round(n["motor_preliminary_kw"], 3), "unit": "kW"},
+                ],
+                method="Deterministic pump duty publisher using simulation cases plus approved margins.",
+                trace=_trace(
+                    trace_id="TRACE-CALC-P101-RATED-DUTY",
+                    calculation_type="centrifugal_pump_preliminary_duty",
+                    input_sources=[
+                        {"source": "SIM-002", "item": "Stream 1102 / S-102", "field": "mass_flow", "value": round(n["max_liquid_flow_tph"], 3), "unit": "t/h"},
+                        {"source": "SIM-002", "item": "Stream 1102 / S-102", "field": "suction_pressure", "value": 3.8, "unit": "barg"},
+                        {"source": "SIM-002", "item": "Stream 1103 / S-103", "field": "discharge_pressure", "value": 7.5, "unit": "barg"},
+                        {"source": "SIM-002", "item": "Stream 1102 / S-102", "field": "density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PUMP-FLOW-MARGIN", "value": _criterion(session, "DBC-PUMP-FLOW-MARGIN"), "unit": "%"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PUMP-HEAD-MARGIN", "value": _criterion(session, "DBC-PUMP-HEAD-MARGIN"), "unit": "%"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PUMP-EFFICIENCY", "value": _criterion(session, "DBC-PUMP-EFFICIENCY"), "unit": "%"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-MOTOR-MARGIN", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Select governing pump flow",
+                            "equation": "W_gov = maximum published suction flow",
+                            "substitution": f"W_gov = {n['max_liquid_flow_tph']:.3f} t/h",
+                            "result": round(n["max_liquid_flow_tph"], 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Apply rated-flow margin",
+                            "equation": "W_rated = W_gov × (1 + flow_margin/100)",
+                            "substitution": f"{n['max_liquid_flow_tph']:.3f} × (1 + {float(_criterion(session, 'DBC-PUMP-FLOW-MARGIN')):.3f}/100)",
+                            "result": round(n["pump_rated_flow_tph"], 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Calculate differential pressure",
+                            "equation": "DeltaP = P_discharge - P_suction",
+                            "substitution": "7.500 - 3.800",
+                            "result": round(n["pump_dp_bar"], 3),
+                            "unit": "bar",
+                        },
+                        {
+                            "step": 4,
+                            "title": "Convert differential pressure to liquid head",
+                            "equation": "H_raw = DeltaP × 100000 / (rho × g)",
+                            "substitution": f"{n['pump_dp_bar']:.3f} × 100000 / ({n['liquid_density_kgm3']:.3f} × 9.80665)",
+                            "result": round(n["pump_raw_head_m"], 3),
+                            "unit": "m",
+                        },
+                        {
+                            "step": 5,
+                            "title": "Apply head margin",
+                            "equation": "H_rated = H_raw × (1 + head_margin/100)",
+                            "substitution": f"{n['pump_raw_head_m']:.3f} × (1 + {float(_criterion(session, 'DBC-PUMP-HEAD-MARGIN')):.3f}/100)",
+                            "result": round(n["pump_rated_head_m"], 3),
+                            "unit": "m",
+                        },
+                        {
+                            "step": 6,
+                            "title": "Convert rated mass flow to volumetric flow",
+                            "equation": "Q = W_rated × 1000 / (rho × 3600)",
+                            "substitution": f"{n['pump_rated_flow_tph']:.3f} × 1000 / ({n['liquid_density_kgm3']:.3f} × 3600)",
+                            "result": round(n["pump_volumetric_flow_m3s"], 6),
+                            "unit": "m3/s",
+                        },
+                        {
+                            "step": 7,
+                            "title": "Calculate hydraulic power",
+                            "equation": "P_hyd = rho × g × Q × H_rated / 1000",
+                            "substitution": f"{n['liquid_density_kgm3']:.3f} × 9.80665 × {n['pump_volumetric_flow_m3s']:.6f} × {n['pump_rated_head_m']:.3f} / 1000",
+                            "result": round(n["pump_hydraulic_kw"], 3),
+                            "unit": "kW",
+                        },
+                        {
+                            "step": 8,
+                            "title": "Calculate shaft power",
+                            "equation": "P_shaft = P_hyd / eta_pump",
+                            "substitution": f"{n['pump_hydraulic_kw']:.3f} / ({float(_criterion(session, 'DBC-PUMP-EFFICIENCY')):.3f}/100)",
+                            "result": round(n["pump_shaft_kw"], 3),
+                            "unit": "kW",
+                        },
+                        {
+                            "step": 9,
+                            "title": "Apply preliminary motor margin",
+                            "equation": "P_motor,prelim = P_shaft × (1 + motor_margin/100)",
+                            "substitution": f"{n['pump_shaft_kw']:.3f} × (1 + {float(_criterion(session, 'DBC-MOTOR-MARGIN')):.3f}/100)",
+                            "result": round(n["motor_preliminary_kw"], 3),
+                            "unit": "kW",
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Differential pressure positive", "actual": round(n["pump_dp_bar"], 3), "criterion": "> 0 bar", "result": "PASS"},
+                        {"check": "Liquid density positive", "actual": round(n["liquid_density_kgm3"], 3), "criterion": "> 0 kg/m3", "result": "PASS"},
+                        {"check": "Pump efficiency physical range", "actual": _criterion(session, "DBC-PUMP-EFFICIENCY"), "criterion": "0 < eta <= 100 %", "result": "PASS"},
+                        {"check": "Rated flow >= governing flow", "actual": round(n["pump_rated_flow_tph"], 3), "criterion": f">= {n['max_liquid_flow_tph']:.3f} t/h", "result": "PASS"},
+                    ],
+                    assumptions=[
+                        "Simulation suction and discharge pressure points are treated as the preliminary pump differential-pressure basis.",
+                        "Liquid density is taken from the maximum-case suction stream.",
+                        "A fixed preliminary pump efficiency is used until vendor curve selection.",
+                    ],
+                    limitations=[
+                        "NPSHA/NPSHR, system-curve hydraulics, static elevation breakdown, frictional pressure-drop decomposition and vendor curve selection are not yet included.",
+                        "Motor value is a preliminary required duty with margin; no standard motor frame/rating has been selected.",
+                    ],
+                    downstream_consumers=[
+                        "P-101 process datasheet",
+                        "P-101 mechanical package basis",
+                        "Minimum-flow recycle design",
+                        "FCV-101 sizing",
+                        "P-101 demo cost estimate",
+                    ],
+                ),
+            ),
+        )
+    )
+
+    psv = _psv_demo_vapor_sizing(session)
+    maximum = publish_demo_simulation("CASE-MAX")
+    feed = next(s for s in maximum.streams if s.id == "STR-S100")
+    vapor = next(s for s in maximum.streams if s.id == "STR-S101")
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="RELIEF-PSV101-BASIS",
+            domain=RecordDomain.PROCESS_CALC,
+            name="PSV-101 relief scenario analysis and demo orifice selection",
+            value={
+                "governing_scenario": psv["scenario"],
+                "relief_load_tph": round(psv["relief_load_tph"], 3),
+                "set_pressure_barg": round(psv["set_pressure_barg"], 3),
+                "relieving_pressure_bara": round(psv["relieving_pressure_bara"], 4),
+                "required_orifice_area_in2": round(psv["required_area_in2"], 4),
+                "selected_orifice": psv["selected_orifice"],
+                "selected_orifice_area_in2": round(psv["selected_area_in2"], 4),
+                "selected_capacity_tph": round(psv["selected_capacity_tph"], 3),
+                "area_utilization_pct": round(psv["area_utilization_pct"], 2),
+                "final_orifice_area": "TBD - qualified relief workflow and relief engineer approval required; demo selection shown separately",
+                "design_status": "DEMO SELECTED - relief engineer approval required",
+            },
+            unit=None,
+            status="demo_orifice_selected_requires_relief_approval",
+            source_id="RELIEF-PSV101-001",
+            method="deterministic choked ideal-gas vapor flow + configured standard-orifice selection",
+            object_ids=["EQ-V101", "VLV-PSV101"],
+            metadata={
+                "safety_critical": True,
+                "qualified_service_required": True,
+                "demo_selection_only": True,
+                "calculation_detail": {
+                    "inputs": [
+                        {"name": "Protected equipment", "value": "V-101"},
+                        {"name": "Selected relief scenario", "value": psv["scenario"]},
+                        {"name": "Maximum vapor stream", "value": "1101 / S-101"},
+                        {"name": "Relief load", "value": round(psv["relief_load_tph"], 3), "unit": "t/h"},
+                        {"name": "Relief load", "value": round(psv["relief_load_kg_s"], 4), "unit": "kg/s"},
+                        {"name": "Set pressure", "value": round(psv["set_pressure_barg"], 3), "unit": "barg"},
+                        {"name": "Relieving temperature", "value": round(psv["relieving_temp_c"], 3), "unit": "degC"},
+                        {"name": "Molecular weight", "value": round(psv["molecular_weight"], 3), "unit": "kg/kmol"},
+                        {"name": "Heat-capacity ratio k", "value": round(psv["heat_capacity_ratio"], 4)},
+                        {"name": "Compressibility Z", "value": round(psv["compressibility"], 4)},
+                        {"name": "Backpressure", "value": round(psv["backpressure_bara"], 3), "unit": "bara"},
+                    ],
+                    "criteria": [
+                        {"criterion_id": "DBC-PSV-SET-PRESSURE", "name": "Set pressure", "value": round(psv["set_pressure_barg"], 3), "unit": "barg"},
+                        {"criterion_id": "DBC-PSV-ACCUMULATION", "name": "Accumulation allowance", "value": round(psv["accumulation_pct"], 3), "unit": "%"},
+                        {"criterion_id": "DBC-PSV-KD", "name": "Discharge coefficient Kd", "value": round(psv["kd"], 4)},
+                        {"criterion_id": "DBC-PSV-KB", "name": "Backpressure correction Kb", "value": round(psv["kb"], 4)},
+                        {"criterion_id": "DBC-PSV-KC", "name": "Combination correction Kc", "value": round(psv["kc"], 4)},
+                    ],
+                    "relief_scenarios": [
+                        {
+                            "scenario": "Blocked vapor outlet",
+                            "why_considered": "Normal vapor outlet can become unavailable while vapor continues to be generated in V-101.",
+                            "screening_status": "DEMO CALCULATED",
+                            "screening_load_tph": round(vapor.mass_flow, 3),
+                            "basis": "Maximum simulated vapor generation/outlet rate 1101",
+                            "result": f'Orifice {psv["selected_orifice"]} selected in demo',
+                        },
+                        {
+                            "scenario": "External fire",
+                            "why_considered": "Liquid-containing pressure equipment may vaporize under external fire exposure when the fire case is applicable.",
+                            "screening_status": "GATED",
+                            "screening_load_tph": None,
+                            "basis": "Requires wetted area, heat input/environment factor and relieving thermodynamics",
+                            "result": "Not calculated in demo",
+                        },
+                        {
+                            "scenario": "Upstream overpressure / control failure",
+                            "why_considered": "An upstream pressure source or failed-open control element can expose V-101 to pressure above its allowable basis.",
+                            "screening_status": "GATED",
+                            "screening_load_tph": None,
+                            "basis": "Requires upstream source pressure, restrictions/Cv and safeguarding credit review",
+                            "result": "Not calculated in demo",
+                        },
+                        {
+                            "scenario": "Blocked liquid outlet / liquid accumulation",
+                            "why_considered": "Loss of liquid withdrawal can raise level and interact with feed and vapor handling.",
+                            "screening_status": "HAZOP / scenario review",
+                            "screening_load_tph": None,
+                            "basis": "Requires feed control, vapor outlet and trip philosophy review",
+                            "result": "Scenario retained; not governing in current demo",
+                        },
+                    ],
+                    "preliminary_selected_scenario": psv["scenario"],
+                    "selection_reason": "For this demonstration, blocked vapor outlet is the only scenario with a complete published vapor-flow basis. The calculation selects a demo orifice, but this is not declared the final project governing relief case; project release remains gated until all credible scenarios are completed and a qualified relief engineer approves the result.",
+                    "case_results": [
+                        {
+                            "case": "Maximum vapor generation",
+                            "simulation_case_id": "SIM-002",
+                            "stream_number": vapor.stream_number,
+                            "mass_flow_tph": round(vapor.mass_flow, 3),
+                            "temperature_degC": round(vapor.temperature, 3),
+                            "operating_pressure_barg": round(vapor.pressure, 3),
+                            "relieving_pressure_bara": round(psv["relieving_pressure_bara"], 4),
+                            "backpressure_bara": round(psv["backpressure_bara"], 3),
+                            "pressure_ratio": round(psv["actual_pressure_ratio"], 4),
+                            "critical_ratio": round(psv["critical_pressure_ratio"], 4),
+                            "flow_regime": "CHOKED" if psv["choked"] else "SUBCRITICAL",
+                        }
+                    ],
+                    "governing_case": psv["scenario"],
+                    "governing_reason": "Current demo governing scenario because it has a complete published vapor load and produces a calculable relieving duty. Other registered scenarios remain approval gates.",
+                    "outputs": [
+                        {"name": "Required effective area", "value": round(psv["required_area_mm2"], 1), "unit": "mm2"},
+                        {"name": "Required effective area", "value": round(psv["required_area_in2"], 4), "unit": "in2"},
+                        {"name": "Selected demo standard orifice", "value": psv["selected_orifice"]},
+                        {"name": "Selected orifice area", "value": round(psv["selected_area_in2"], 4), "unit": "in2"},
+                        {"name": "Selected orifice area", "value": round(psv["selected_area_mm2"], 1), "unit": "mm2"},
+                        {"name": "Calculated capacity at selected area", "value": round(psv["selected_capacity_tph"], 3), "unit": "t/h"},
+                        {"name": "Area utilization", "value": round(psv["area_utilization_pct"], 2), "unit": "%"},
+                        {"name": "Release status", "value": "DEMO SELECTED - NOT FOR DESIGN ISSUE"},
+                    ],
+                    "method": "Transparent deterministic vapor-relief calculation using the compressible choked-flow mass-flux equation and a configured standard-orifice table. This demo intentionally does not claim certified API/ISO sizing compliance.",
+                    "trace": _trace(
+                        trace_id="TRACE-RELIEF-PSV101-ORIFICE",
+                        calculation_type="psv_vapor_relief_sizing_and_orifice_selection",
+                        input_sources=[
+                            {"source": "SIM-002", "item": "Stream 1101 / S-101", "field": "maximum vapor mass flow", "value": round(vapor.mass_flow, 3), "unit": "t/h"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-SET-PRESSURE", "value": round(psv["set_pressure_barg"], 3), "unit": "barg"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-ACCUMULATION", "value": round(psv["accumulation_pct"], 3), "unit": "%"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-RELIEVING-TEMP", "value": round(psv["relieving_temp_c"], 3), "unit": "degC"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-VAPOR-MW", "value": round(psv["molecular_weight"], 3), "unit": "kg/kmol"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-VAPOR-K", "value": round(psv["heat_capacity_ratio"], 4)},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-VAPOR-Z", "value": round(psv["compressibility"], 4)},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-KD", "value": round(psv["kd"], 4)},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-KB", "value": round(psv["kb"], 4)},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-KC", "value": round(psv["kc"], 4)},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-BACKPRESSURE", "value": round(psv["backpressure_bara"], 3), "unit": "bara"},
+                        ],
+                        steps=[
+                            {
+                                "step": 1,
+                                "title": "Select current demo relief load",
+                                "equation": "W_relief = maximum simulated vapor generation/outlet flow",
+                                "substitution": f'{vapor.mass_flow:.3f} t/h from stream 1101 / S-101',
+                                "result": round(psv["relief_load_tph"], 3),
+                                "unit": "t/h",
+                            },
+                            {
+                                "step": 2,
+                                "title": "Convert relief load to kg/s",
+                                "equation": "W = W_tph × 1000 / 3600",
+                                "substitution": f'{psv["relief_load_tph"]:.3f} × 1000 / 3600',
+                                "result": round(psv["relief_load_kg_s"], 5),
+                                "unit": "kg/s",
+                            },
+                            {
+                                "step": 3,
+                                "title": "Calculate relieving pressure",
+                                "equation": "P_rel,g = P_set × (1 + accumulation/100); P_rel,a = P_rel,g + P_atm",
+                                "substitution": f'{psv["set_pressure_barg"]:.3f} × (1 + {psv["accumulation_pct"]:.3f}/100) + {psv["atmospheric_pressure_bara"]:.5f}',
+                                "result": round(psv["relieving_pressure_bara"], 5),
+                                "unit": "bara",
+                            },
+                            {
+                                "step": 4,
+                                "title": "Check choked-flow condition",
+                                "equation": "P_back/P_rel <= (2/(k+1))^(k/(k-1))",
+                                "substitution": f'{psv["backpressure_bara"]:.3f}/{psv["relieving_pressure_bara"]:.5f} = {psv["actual_pressure_ratio"]:.5f} <= {psv["critical_pressure_ratio"]:.5f}',
+                                "result": "CHOKED" if psv["choked"] else "SUBCRITICAL",
+                                "unit": None,
+                            },
+                            {
+                                "step": 5,
+                                "title": "Calculate specific gas constant",
+                                "equation": "R_specific = R_universal / MW",
+                                "substitution": f'8314.462618 / {psv["molecular_weight"]:.3f}',
+                                "result": round(psv["specific_gas_constant"], 4),
+                                "unit": "J/(kg.K)",
+                            },
+                            {
+                                "step": 6,
+                                "title": "Calculate ideal choked mass flux",
+                                "equation": "G_ideal = P0 × sqrt[k/(Z R T) × (2/(k+1))^((k+1)/(k-1))]",
+                                "substitution": f'P0={psv["relieving_pressure_bara"]:.5f} bara, k={psv["heat_capacity_ratio"]:.4f}, Z={psv["compressibility"]:.4f}, T={psv["relieving_temp_k"]:.2f} K',
+                                "result": round(psv["ideal_mass_flux_kg_m2_s"], 3),
+                                "unit": "kg/(m2.s)",
+                            },
+                            {
+                                "step": 7,
+                                "title": "Apply configured correction factors",
+                                "equation": "G_corrected = G_ideal × Kd × Kb × Kc",
+                                "substitution": f'{psv["ideal_mass_flux_kg_m2_s"]:.3f} × {psv["kd"]:.4f} × {psv["kb"]:.4f} × {psv["kc"]:.4f}',
+                                "result": round(psv["corrected_mass_flux_kg_m2_s"], 3),
+                                "unit": "kg/(m2.s)",
+                            },
+                            {
+                                "step": 8,
+                                "title": "Calculate required effective area",
+                                "equation": "A_req = W / G_corrected",
+                                "substitution": f'{psv["relief_load_kg_s"]:.5f} / {psv["corrected_mass_flux_kg_m2_s"]:.3f}',
+                                "result": round(psv["required_area_in2"], 4),
+                                "unit": "in2",
+                            },
+                            {
+                                "step": 9,
+                                "title": "Select next configured standard orifice",
+                                "equation": "A_selected = smallest configured standard area >= A_req",
+                                "substitution": f'A_req={psv["required_area_in2"]:.4f} in2',
+                                "result": f'{psv["selected_orifice"]} / {psv["selected_area_in2"]:.3f} in2',
+                                "unit": None,
+                            },
+                            {
+                                "step": 10,
+                                "title": "Check selected-orifice capacity",
+                                "equation": "W_capacity = G_corrected × A_selected",
+                                "substitution": f'{psv["corrected_mass_flux_kg_m2_s"]:.3f} kg/(m2.s) × {psv["selected_area_m2"] if "selected_area_m2" in psv else psv["selected_area_in2"] * 0.0254**2:.6f} m2',
+                                "result": round(psv["selected_capacity_tph"], 3),
+                                "unit": "t/h",
+                            },
+                        ],
+                        selection_checks=psv["selection_checks"],
+                        validation_checks=[
+                            {"check": "Relief load positive", "actual": round(psv["relief_load_tph"], 3), "criterion": "> 0 t/h", "result": "PASS"},
+                            {"check": "Relieving absolute pressure positive", "actual": round(psv["relieving_pressure_bara"], 4), "criterion": "> 0 bara", "result": "PASS"},
+                            {"check": "Choked-flow applicability", "actual": round(psv["actual_pressure_ratio"], 4), "criterion": f'<= {psv["critical_pressure_ratio"]:.4f}', "result": "PASS" if psv["choked"] else "FAIL"},
+                            {"check": "Selected area >= required area", "actual": round(psv["selected_area_in2"], 4), "criterion": f'>= {psv["required_area_in2"]:.4f} in2', "result": "PASS"},
+                            {"check": "Selected capacity >= required load", "actual": round(psv["selected_capacity_tph"], 3), "criterion": f'>= {psv["relief_load_tph"]:.3f} t/h', "result": "PASS"},
+                            {"check": "All credible relief scenarios finalized", "actual": "No", "criterion": "Required before design issue", "result": "GATED"},
+                            {"check": "Final governing scenario established", "actual": "No", "criterion": "All credible scenarios complete + relief engineer approval", "result": "GATED"},
+                            {"check": "Final orifice sizing permitted", "actual": "No", "criterion": "Qualified company relief workflow approval required", "result": "GATED"},
+                        ],
+                        assumptions=[
+                            "The blocked-vapor-outlet demo load equals the maximum simulated vapor generation/outlet rate on stream 1101.",
+                            "Relieving vapor is represented by the configured demo MW, k and Z values.",
+                            "Correction factors Kd, Kb and Kc are explicit Design Basis demo inputs, not hidden constants.",
+                            "The configured orifice table is used only to demonstrate deterministic selection logic.",
+                        ],
+                        limitations=[
+                            "This demo calculation is not a certified implementation of API 520/521, ISO 4126 or a vendor-certified sizing program.",
+                            "External fire and upstream-overpressure scenarios remain gated and may become governing when their required data is available.",
+                            "Inlet pressure drop, outlet built-up backpressure, reaction forces, acoustic effects, two-phase relief and certified valve capacity are not yet evaluated.",
+                            "Selected orifice is a DEMO engineering selection and must not be issued for construction/procurement without the qualified company relief workflow.",
+                        ],
+                        downstream_consumers=[
+                            "PSV-101 process datasheet",
+                            "PSV-101 mechanical/vendor requisition",
+                            "Relief header hydraulic study",
+                            "HAZOP safeguards and overpressure node review",
+                            "BDEP PSV summary",
+                        ],
+                        qualification="Safety-critical deterministic demo; relief engineer approval gate remains mandatory",
+                    ),
+                },
+            },
+        )
+    )
+
+    line_records = _line_sizing_records(session, n)
+    for line in line_records:
+        record_ids.append(
+            _upsert_record(
+                session,
+                record_id=line["record_id"],
+                domain=RecordDomain.PROCESS_CALC,
+                name=f'Line sizing — {line["service"]}',
+                value={
+                    "line_number": line["line_number"],
+                    "stream_number": line["stream_number"],
+                    "selected_nps_in": line["selected_nps_in"],
+                    "selected_internal_diameter_in": round(line["selected_internal_diameter_in"], 4),
+                    "required_diameter_in": round(line["required_diameter_in"], 3),
+                    "design_velocity_ms": round(line["design_velocity_ms"], 3),
+                    "velocity_limit_ms": line["criterion_velocity_ms"],
+                    "design_reynolds": round(line["design_reynolds"], 0),
+                    "design_friction_factor": round(line["design_friction_factor"], 5),
+                    "equivalent_length_m": line["equivalent_length_m"],
+                    "design_friction_dp_bar": round(line["design_friction_dp_bar"], 4),
+                    "friction_dp_limit_bar": line["friction_dp_limit_bar"],
+                },
+                unit=None,
+                status="process_checked_demo",
+                source_id=line["record_id"],
+                method="deterministic liquid hydraulic line-sizing service",
+                object_ids=line["object_ids"],
+                metadata=_calculation_detail(
+                    inputs=[
+                        {"name": "Service", "value": line["service"]},
+                        {"name": "Stream number", "value": line["stream_number"] or "Derived recycle line"},
+                        {"name": "Simulator stream", "value": line["simulator_stream_id"] or "Not a direct simulator stream"},
+                        {"name": "Design mass flow", "value": round(line["design_flow_tph"], 3), "unit": "t/h"},
+                        {"name": "Liquid density", "value": round(line["density_kgm3"], 3), "unit": "kg/m3"},
+                        {"name": "Liquid viscosity", "value": round(line["viscosity_cp"], 3), "unit": "cP"},
+                    ],
+                    criteria=[
+                        {"criterion_id": line["velocity_criterion_id"], "name": "Maximum velocity", "value": line["criterion_velocity_ms"], "unit": "m/s"},
+                        {"criterion_id": line["pressure_drop_criterion_id"], "name": "Maximum frictional pressure drop", "value": line["friction_dp_limit_bar"], "unit": "bar"},
+                        {"criterion_id": line["equivalent_length_criterion_id"], "name": "Equivalent hydraulic length", "value": line["equivalent_length_m"], "unit": "m"},
+                        {"criterion_id": "DBC-LINE-ROUGHNESS", "name": "Absolute roughness", "value": line["roughness_mm"], "unit": "mm"},
+                        {"criterion_id": "DBC-LINE-FLUID-CODE", "name": "Fluid code", "value": _criterion(session, "DBC-LINE-FLUID-CODE")},
+                        {"criterion_id": "DBC-LINE-PIPING-CLASS", "name": "Piping class", "value": _criterion(session, "DBC-LINE-PIPING-CLASS")},
+                    ],
+                    case_results=line["case_results"],
+                    governing_case=line["governing_case"],
+                    governing_reason=line["governing_reason"],
+                    outputs=[
+                        {"name": "Line number", "value": line["line_number"]},
+                        {"name": "Required velocity-equivalent diameter", "value": round(line["required_diameter_in"], 3), "unit": "in"},
+                        {"name": "Selected NPS", "value": line["selected_nps_in"], "unit": "in"},
+                        {"name": "Configured selected internal diameter", "value": round(line["selected_internal_diameter_in"], 4), "unit": "in"},
+                        {"name": "Design velocity", "value": round(line["design_velocity_ms"], 3), "unit": "m/s"},
+                        {"name": "Design Reynolds number", "value": round(line["design_reynolds"], 0)},
+                        {"name": "Darcy friction factor", "value": round(line["design_friction_factor"], 5)},
+                        {"name": "Frictional pressure drop", "value": round(line["design_friction_dp_bar"], 4), "unit": "bar"},
+                    ],
+                    method="Deterministic liquid hydraulic sizing using configured internal-diameter candidates, velocity and Darcy-Weisbach frictional pressure-drop criteria.",
+                    trace=_trace(
+                        trace_id=f'TRACE-{line["record_id"]}',
+                        calculation_type="liquid_process_line_hydraulic_sizing",
+                        input_sources=[
+                            {
+                                "source": (
+                                    f'SIM-002 / {line["simulator_stream_id"]}'
+                                    if line["simulator_stream_id"]
+                                    else "CALC-P101-001 / derived minimum-flow duty"
+                                ),
+                                "item": line["stream_number"] or line["sequence"],
+                                "field": "design mass flow",
+                                "value": round(line["design_flow_tph"], 3),
+                                "unit": "t/h",
+                            },
+                            {"source": "SIM-002 / stream 1102 liquid properties", "field": "density", "value": round(line["density_kgm3"], 3), "unit": "kg/m3"},
+                            {"source": "SIM-002 / stream 1102 liquid properties", "field": "viscosity", "value": round(line["viscosity_cp"], 3), "unit": "cP"},
+                            {"source": "DB-001 Rev A", "criterion_id": line["velocity_criterion_id"], "field": "maximum liquid velocity", "value": line["criterion_velocity_ms"], "unit": "m/s"},
+                            {"source": "DB-001 Rev A", "criterion_id": line["pressure_drop_criterion_id"], "field": "maximum frictional pressure drop", "value": line["friction_dp_limit_bar"], "unit": "bar"},
+                            {"source": "DB-001 Rev A", "criterion_id": line["equivalent_length_criterion_id"], "field": "equivalent hydraulic length", "value": line["equivalent_length_m"], "unit": "m"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-LINE-ROUGHNESS", "field": "absolute roughness", "value": line["roughness_mm"], "unit": "mm"},
+                            {"source": "Project demo pipe-ID table", "field": "candidate internal diameters", "value": "configured per NPS"},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-LINE-FLUID-CODE", "value": _criterion(session, "DBC-LINE-FLUID-CODE")},
+                            {"source": "DB-001 Rev A", "criterion_id": "DBC-LINE-PIPING-CLASS", "value": _criterion(session, "DBC-LINE-PIPING-CLASS")},
+                        ],
+                        steps=[
+                            {
+                                "step": 1,
+                                "title": "Establish design mass flow",
+                                "equation": "W_design = governing published/derived flow",
+                                "substitution": f'{line["design_flow_tph"]:.3f} t/h',
+                                "result": round(line["design_flow_tph"], 3),
+                                "unit": "t/h",
+                            },
+                            {
+                                "step": 2,
+                                "title": "Convert mass flow to volumetric flow",
+                                "equation": "Q = W × 1000 / (rho × 3600)",
+                                "substitution": f'{line["design_flow_tph"]:.3f} × 1000 / ({line["density_kgm3"]:.3f} × 3600)',
+                                "result": round(line["flow_m3s"], 6),
+                                "unit": "m3/s",
+                            },
+                            {
+                                "step": 3,
+                                "title": "Calculate velocity-based minimum flow area",
+                                "equation": "A_required = Q / v_max",
+                                "substitution": f'{line["flow_m3s"]:.6f} / {line["criterion_velocity_ms"]:.3f}',
+                                "result": round(line["required_area_m2"], 6),
+                                "unit": "m2",
+                            },
+                            {
+                                "step": 4,
+                                "title": "Calculate velocity-equivalent minimum diameter",
+                                "equation": "D_required = sqrt(4 × A_required / pi)",
+                                "substitution": f'sqrt(4 × {line["required_area_m2"]:.6f} / pi)',
+                                "result": round(line["required_diameter_in"], 3),
+                                "unit": "in",
+                            },
+                            {
+                                "step": 5,
+                                "title": "Evaluate configured internal diameter",
+                                "equation": "D_ID = configured internal diameter for candidate NPS",
+                                "substitution": f'NPS {line["selected_nps_in"]:g} -> ID {line["selected_internal_diameter_in"]:.4f} in',
+                                "result": round(line["selected_internal_diameter_in"], 4),
+                                "unit": "in",
+                            },
+                            {
+                                "step": 6,
+                                "title": "Calculate selected-size velocity",
+                                "equation": "v = Q / (pi D_ID^2 / 4)",
+                                "substitution": f'Q={line["flow_m3s"]:.6f} m3/s, ID={line["selected_internal_diameter_in"]:.4f} in',
+                                "result": round(line["design_velocity_ms"], 3),
+                                "unit": "m/s",
+                            },
+                            {
+                                "step": 7,
+                                "title": "Calculate Reynolds number",
+                                "equation": "Re = rho × v × D / mu",
+                                "substitution": f'rho={line["density_kgm3"]:.3f}, v={line["design_velocity_ms"]:.3f}, ID={line["selected_internal_diameter_in"]:.4f} in, mu={line["viscosity_cp"]:.3f} cP',
+                                "result": round(line["design_reynolds"], 0),
+                                "unit": None,
+                            },
+                            {
+                                "step": 8,
+                                "title": "Calculate Darcy friction factor",
+                                "equation": "f = 64/Re for laminar; Swamee-Jain approximation for turbulent flow",
+                                "substitution": f'Re={line["design_reynolds"]:.0f}, roughness={line["roughness_mm"]:.4f} mm',
+                                "result": round(line["design_friction_factor"], 5),
+                                "unit": None,
+                            },
+                            {
+                                "step": 9,
+                                "title": "Calculate frictional pressure drop",
+                                "equation": "DeltaP_f = f × (L_eq/D) × rho v^2 / 2",
+                                "substitution": f'f={line["design_friction_factor"]:.5f}, L_eq={line["equivalent_length_m"]:.1f} m, v={line["design_velocity_ms"]:.3f} m/s',
+                                "result": round(line["design_friction_dp_bar"], 4),
+                                "unit": "bar",
+                            },
+                            {
+                                "step": 10,
+                                "title": "Evaluate all configured NPS candidates",
+                                "equation": "PASS when velocity <= limit AND frictional DeltaP <= limit",
+                                "substitution": f'v <= {line["criterion_velocity_ms"]:.3f} m/s; DeltaP_f <= {line["friction_dp_limit_bar"]:.3f} bar',
+                                "result": f'NPS {line["selected_nps_in"]:g} selected',
+                                "unit": None,
+                                "note": (
+                                    f'Previous candidate NPS {line["previous_candidate"]["candidate_nps_in"]:g}: '
+                                    f'v={line["previous_candidate"]["velocity_ms"]:.3f} m/s, '
+                                    f'DeltaP={line["previous_candidate"]["friction_dp_bar"]:.4f} bar, '
+                                    f'result={line["previous_candidate"]["result"]}.'
+                                    if line["previous_candidate"]
+                                    else "Selected size is the smallest configured candidate."
+                                ),
+                            },
+                            {
+                                "step": 11,
+                                "title": "Assign engineering line number",
+                                "equation": "Line No. = size-fluid code-sequence-piping class",
+                                "substitution": line["line_number"],
+                                "result": line["line_number"],
+                                "unit": None,
+                            },
+                        ],
+                        selection_checks=line["candidate_checks"],
+                        validation_checks=[
+                            {"check": "Selected velocity <= Design Basis limit", "actual": round(line["design_velocity_ms"], 3), "criterion": f'<= {line["criterion_velocity_ms"]:.3f} m/s', "result": "PASS" if line["design_velocity_ms"] <= line["criterion_velocity_ms"] else "FAIL"},
+                            {"check": "Selected frictional pressure drop <= Design Basis limit", "actual": round(line["design_friction_dp_bar"], 4), "criterion": f'<= {line["friction_dp_limit_bar"]:.4f} bar', "result": "PASS" if line["design_friction_dp_bar"] <= line["friction_dp_limit_bar"] else "FAIL"},
+                            {"check": "Reynolds number calculated", "actual": round(line["design_reynolds"], 0), "criterion": "> 0", "result": "PASS" if line["design_reynolds"] > 0 else "FAIL"},
+                            {"check": "Previous smaller standard size rejected when applicable", "actual": line["previous_candidate"]["result"] if line["previous_candidate"] else "N/A", "criterion": "FAIL or no smaller candidate", "result": "PASS" if line["previous_candidate"] is None or line["previous_candidate"]["result"] == "FAIL" else "REVIEW"},
+                            {"check": "Line numbering attributes available", "actual": line["line_number"], "criterion": "size-fluid-sequence-class", "result": "PASS"},
+                        ],
+                        assumptions=[
+                            "A configured demo internal-diameter table is used; production projects must load approved piping-spec dimensions.",
+                            "Equivalent hydraulic length is a Design Basis demo input and includes a fitting allowance rather than explicit fitting-by-fitting K values.",
+                            "Liquid density and viscosity are taken from the published maximum-case liquid stream for design selection.",
+                            "Darcy-Weisbach friction loss is used with a laminar relation or Swamee-Jain turbulent approximation.",
+                        ],
+                        limitations=[
+                            "Static elevation, equipment/nozzle losses, individual fittings/K-values, control-valve loss, heat-transfer effects and full system-curve iteration are not yet included.",
+                            "No erosion, noise, flashing, cavitation, two-phase or slug-flow criteria are included.",
+                            "NPSHA impact requires the full suction-system hydraulic model and liquid vapor-pressure data.",
+                            "Final line size remains gated to the qualified project hydraulic service and piping specification.",
+                        ],
+                        downstream_consumers=[
+                            "P&ID line annotation",
+                            "Line list",
+                            "Hydraulic calculation package",
+                            "Pump NPSHA/system-curve analysis",
+                            "Control-valve pressure-drop basis",
+                            "Mechanical piping class/specification workflow",
+                            "HAZOP line-deviation review",
+                        ],
+                        qualification="Detailed deterministic demo hydraulic screening; final project hydraulic issue remains gated",
+                    ),
+                ),
+            )
+        )
+
+    result = _set_stage(
+        session,
+        stage=PublishStage.PROCESS,
+        summary={
+            "records": record_ids,
+            "vessel_holdup_volume_m3": round(n["holdup_volume_m3"], 3),
+            "pump_rated_flow_tph": round(n["pump_rated_flow_tph"], 3),
+            "pump_rated_head_m": round(n["pump_rated_head_m"], 3),
+            "psv_basis": f'demo orifice {psv["selected_orifice"]} selected; qualified relief approval and remaining scenarios gated',
+            "line_numbers": [line["line_number"] for line in line_records],
+        },
+    )
+    result.records_written = record_ids
+    session.commit()
+    return result
+
+
+def publish_instrumentation(session: Session) -> PublicationResult:
+    _require_dependencies(session, PublishStage.INSTRUMENTATION)
+    n = _process_numbers(session)
+    min_flow_fraction = float(_criterion(session, "DBC-PUMP-MIN-FLOW-FRACTION")) / 100.0
+    cv_dp = float(_criterion(session, "DBC-CV-SIZING-DP"))
+    cv_margin = float(_criterion(session, "DBC-CV-SIZING-MARGIN")) / 100.0
+    fail_position = str(_criterion(session, "DBC-CV-FAIL-FCV101"))
+    normal_opening = float(_criterion(session, "DBC-CV-NORMAL-OPENING"))
+    max_opening = float(_criterion(session, "DBC-CV-MAX-OPENING"))
+    signal_standard = str(_criterion(session, "DBC-DCS-SIGNAL-STANDARD"))
+
+    min_flow_tph = n["pump_rated_flow_tph"] * min_flow_fraction
+    q_m3h = min_flow_tph * 1000.0 / n["liquid_density_kgm3"]
+    sg = n["liquid_density_kgm3"] / 1000.0
+    kv = q_m3h * math.sqrt(sg / cv_dp)
+    raw_cv = 1.156 * kv
+    design_cv = raw_cv * (1.0 + cv_margin)
+    ft_range_hi = math.ceil(min_flow_tph * 1.25 / 5.0) * 5.0
+
+    record_ids = []
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="CALC-FCV101-CV",
+            domain=RecordDomain.INSTRUMENTATION,
+            name="FCV-101 preliminary liquid Cv sizing",
+            value={
+                "minimum_flow_tph": round(min_flow_tph, 3),
+                "flow_m3h": round(q_m3h, 3),
+                "specific_gravity": round(sg, 4),
+                "sizing_dp_bar": cv_dp,
+                "raw_cv": round(raw_cv, 3),
+                "design_cv": round(design_cv, 3),
+                "cv_margin_pct": round(cv_margin * 100.0, 3),
+            },
+            unit=None,
+            status="instrument_checked_demo",
+            source_id="CALC-FCV101-001",
+            method="demo liquid Kv/Cv equation using published Design Basis",
+            object_ids=["VLV-FCV101", "EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Pump rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Minimum-flow fraction", "value": round(min_flow_fraction * 100.0, 3), "unit": "%"},
+                    {"name": "Minimum-flow design rate", "value": round(min_flow_tph, 3), "unit": "t/h"},
+                    {"name": "Liquid density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-CV-SIZING-DP", "name": "Sizing pressure drop", "value": cv_dp, "unit": "bar"},
+                    {"criterion_id": "DBC-CV-SIZING-MARGIN", "name": "Cv sizing margin", "value": round(cv_margin * 100.0, 3), "unit": "%"},
+                    {"criterion_id": "DBC-CV-NORMAL-OPENING", "name": "Normal opening target", "value": normal_opening, "unit": "%"},
+                    {"criterion_id": "DBC-CV-MAX-OPENING", "name": "Maximum opening limit", "value": max_opening, "unit": "%"},
+                    {"criterion_id": "DBC-CV-FAIL-FCV101", "name": "Fail position", "value": fail_position},
+                ],
+                case_results=[
+                    {
+                        **row,
+                        "required_recycle_tph": round(max(min_flow_tph - row["mass_flow_tph"], 0.0), 3),
+                        "comment": (
+                            "Recycle demand is zero because process flow exceeds preliminary minimum-flow requirement."
+                            if row["mass_flow_tph"] >= min_flow_tph
+                            else "Recycle must supplement process flow to maintain minimum pump flow."
+                        ),
+                    }
+                    for row in _stream_case_table("STR-S102")
+                ] + [
+                    {
+                        "case": "Minimum-flow design case",
+                        "mass_flow_tph": round(min_flow_tph, 3),
+                        "flow_m3h": round(q_m3h, 3),
+                        "specific_gravity": round(sg, 4),
+                        "sizing_dp_bar": cv_dp,
+                    }
+                ],
+                governing_case="Minimum-flow design case",
+                governing_reason="FCV-101 is sized for the dedicated minimum-flow protection duty, not for the normal process-throughput case.",
+                outputs=[
+                    {"name": "Raw Cv", "value": round(raw_cv, 3)},
+                    {"name": "Design Cv", "value": round(design_cv, 3)},
+                    {"name": "FT upper range", "value": ft_range_hi, "unit": "t/h"},
+                ],
+                method="Deterministic preliminary liquid control-valve sizing using published minimum-flow duty and Design Basis pressure drop.",
+                trace=_trace(
+                    trace_id="TRACE-CALC-FCV101-CV",
+                    calculation_type="liquid_control_valve_preliminary_cv",
+                    input_sources=[
+                        {"source": "CALC-P101-001", "field": "pump_rated_flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PUMP-MIN-FLOW-FRACTION", "value": round(min_flow_fraction * 100.0, 3), "unit": "%"},
+                        {"source": "SIM-002 / stream 1102", "field": "liquid_density", "value": round(n["liquid_density_kgm3"], 3), "unit": "kg/m3"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-CV-SIZING-DP", "value": cv_dp, "unit": "bar"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-CV-SIZING-MARGIN", "value": round(cv_margin * 100.0, 3), "unit": "%"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Calculate minimum-flow protection duty",
+                            "equation": "W_min = W_pump,rated × minimum_flow_fraction",
+                            "substitution": f'{n["pump_rated_flow_tph"]:.3f} × {min_flow_fraction:.4f}',
+                            "result": round(min_flow_tph, 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Convert minimum-flow mass rate to volumetric flow",
+                            "equation": "Q = W_min × 1000 / rho",
+                            "substitution": f'{min_flow_tph:.3f} × 1000 / {n["liquid_density_kgm3"]:.3f}',
+                            "result": round(q_m3h, 3),
+                            "unit": "m3/h",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Calculate liquid specific gravity",
+                            "equation": "SG = rho / 1000",
+                            "substitution": f'{n["liquid_density_kgm3"]:.3f} / 1000',
+                            "result": round(sg, 4),
+                            "unit": None,
+                        },
+                        {
+                            "step": 4,
+                            "title": "Calculate metric flow coefficient Kv",
+                            "equation": "Kv = Q × sqrt(SG / DeltaP_bar)",
+                            "substitution": f'{q_m3h:.3f} × sqrt({sg:.4f} / {cv_dp:.3f})',
+                            "result": round(kv, 3),
+                            "unit": "Kv",
+                        },
+                        {
+                            "step": 5,
+                            "title": "Convert Kv to Cv",
+                            "equation": "Cv = 1.156 × Kv",
+                            "substitution": f'1.156 × {kv:.3f}',
+                            "result": round(raw_cv, 3),
+                            "unit": "Cv",
+                        },
+                        {
+                            "step": 6,
+                            "title": "Apply Cv sizing margin",
+                            "equation": "Cv_design = Cv_raw × (1 + margin/100)",
+                            "substitution": f'{raw_cv:.3f} × (1 + {cv_margin * 100.0:.3f}/100)',
+                            "result": round(design_cv, 3),
+                            "unit": "Cv",
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Sizing pressure drop positive", "actual": cv_dp, "criterion": "> 0 bar", "result": "PASS"},
+                        {"check": "Liquid density positive", "actual": round(n["liquid_density_kgm3"], 3), "criterion": "> 0 kg/m3", "result": "PASS"},
+                        {"check": "Design Cv >= raw Cv", "actual": round(design_cv, 3), "criterion": f'>= {raw_cv:.3f}', "result": "PASS"},
+                        {"check": "Normal opening target", "actual": "Not evaluated", "criterion": f'{normal_opening:g} % target', "result": "PENDING TRIM/CHARACTERISTIC"},
+                        {"check": "Maximum opening limit", "actual": "Not evaluated", "criterion": f'<= {max_opening:g} %', "result": "PENDING TRIM/CHARACTERISTIC"},
+                    ],
+                    assumptions=[
+                        "Single-phase incompressible liquid service is assumed for this preliminary Cv calculation.",
+                        "Design Basis pressure drop is used directly as the sizing differential pressure.",
+                        "Published maximum-case liquid density is used as the preliminary sizing density.",
+                    ],
+                    limitations=[
+                        "No selected valve size, trim, inherent characteristic, installed characteristic or opening calculation is available yet.",
+                        "No cavitation, flashing, choked-flow, noise, velocity, rangeability, actuator thrust or valve-body pressure-class check is included yet.",
+                        "Final control-valve selection requires the qualified valve-sizing service and vendor/trim data.",
+                    ],
+                    downstream_consumers=[
+                        "FCV-101 instrument datasheet",
+                        "Minimum-flow DCS loop",
+                        "FCV-101 cost estimate",
+                        "Vendor control-valve requisition",
+                    ],
+                ),
+            ),
+        )
+    )
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="INST-FT101-RANGE",
+            domain=RecordDomain.INSTRUMENTATION,
+            name="FT-101 preliminary calibrated range",
+            value={"LRV": 0.0, "URV": ft_range_hi, "unit": "t/h"},
+            unit=None,
+            status="instrument_checked_demo",
+            source_id="INST-FT101-RANGE",
+            method="1.25 × minimum-flow design rate rounded upward",
+            object_ids=["INS-FT101", "EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Minimum-flow design rate", "value": round(min_flow_tph, 3), "unit": "t/h"},
+                ],
+                criteria=[
+                    {"name": "Range factor", "value": 1.25},
+                    {"name": "Rounding increment", "value": 5.0, "unit": "t/h"},
+                ],
+                case_results=_stream_case_table("STR-S102"),
+                governing_case="Minimum-flow design case",
+                governing_reason="FT-101 range must cover the minimum-flow protection measurement with operating margin.",
+                outputs=[
+                    {"name": "LRV", "value": 0.0, "unit": "t/h"},
+                    {"name": "URV", "value": ft_range_hi, "unit": "t/h"},
+                ],
+                method="Deterministic instrument range selection.",
+                trace=_trace(
+                    trace_id="TRACE-INST-FT101-RANGE",
+                    calculation_type="instrument_range_selection",
+                    input_sources=[
+                        {"source": "CALC-FCV101-001", "field": "minimum_flow_design_rate", "value": round(min_flow_tph, 3), "unit": "t/h"},
+                        {"source": "Instrumentation sizing rule", "field": "range_factor", "value": 1.25},
+                        {"source": "Instrumentation sizing rule", "field": "rounding_increment", "value": 5.0, "unit": "t/h"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Apply measurement range factor",
+                            "equation": "URV_raw = W_design × range_factor",
+                            "substitution": f'{min_flow_tph:.3f} × 1.25',
+                            "result": round(min_flow_tph * 1.25, 3),
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Round upward to instrument range increment",
+                            "equation": "URV = ceil(URV_raw / 5) × 5",
+                            "substitution": f'ceil({min_flow_tph * 1.25:.3f} / 5) × 5',
+                            "result": ft_range_hi,
+                            "unit": "t/h",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Assign preliminary calibrated range",
+                            "equation": "Range = LRV to URV",
+                            "substitution": f'0 to {ft_range_hi:g}',
+                            "result": f'0-{ft_range_hi:g}',
+                            "unit": "t/h",
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "URV covers minimum-flow design rate", "actual": ft_range_hi, "criterion": f'>= {min_flow_tph:.3f} t/h', "result": "PASS"},
+                        {"check": "URV includes 25% preliminary range margin", "actual": ft_range_hi, "criterion": f'>= {min_flow_tph * 1.25:.3f} t/h before rounding', "result": "PASS"},
+                    ],
+                    assumptions=[
+                        "Zero-based mass-flow range is used for the MVP minimum-flow measurement.",
+                    ],
+                    limitations=[
+                        "Final transmitter technology, primary element, turndown, accuracy, density compensation and alarm ranges are not yet selected.",
+                    ],
+                    downstream_consumers=[
+                        "FT-101 instrument datasheet",
+                        "FIC-101 DCS configuration basis",
+                        "Vendor instrument requisition",
+                    ],
+                ),
+            ),
+        )
+    )
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="DCS-FIC101-LOOP",
+            domain=RecordDomain.INSTRUMENTATION,
+            name="DCS minimum-flow control loop",
+            value={
+                "measurement": "FT-101",
+                "controller": "FIC-101",
+                "final_element": "FCV-101",
+                "signal_standard": signal_standard,
+                "valve_fail_position": fail_position,
+                "normal_opening_target_pct": normal_opening,
+                "maximum_opening_limit_pct": max_opening,
+                "control_action": "TBD during detailed control narrative",
+            },
+            unit=None,
+            status="dcs_basis_published_demo",
+            source_id="DCS-FIC101-LOOP",
+            method="approved P&ID module + Design Basis instrumentation criteria",
+            object_ids=["INS-FT101", "INS-FIC101", "VLV-FCV101", "EQ-P101"],
+        )
+    )
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="DCS-LIC101-LOOP",
+            domain=RecordDomain.INSTRUMENTATION,
+            name="DCS vessel level control loop",
+            value={
+                "measurement": "LT-101",
+                "controller": "LIC-101",
+                "final_element": "LCV-101",
+                "signal_standard": signal_standard,
+                "measurement_range": "0-100 % level",
+                "alarm_trip_settings": "TBD by safeguarding / operating philosophy",
+            },
+            unit=None,
+            status="dcs_basis_published_demo",
+            source_id="DCS-LIC101-LOOP",
+            method="approved vessel level-control module + DCS standard",
+            object_ids=["INS-LT101", "INS-LIC101", "VLV-LCV101", "EQ-V101"],
+        )
+    )
+
+    result = _set_stage(
+        session,
+        stage=PublishStage.INSTRUMENTATION,
+        summary={
+            "records": record_ids,
+            "FCV-101_design_cv": round(design_cv, 3),
+            "FT-101_range": f"0-{ft_range_hi:g} t/h",
+            "DCS_loops": ["FIC-101", "LIC-101"],
+        },
+    )
+    result.records_written = record_ids
+    session.commit()
+    return result
+
+
+def publish_mechanical(session: Session) -> PublicationResult:
+    _require_dependencies(session, PublishStage.MECHANICAL)
+    n = _process_numbers(session)
+    max_case = publish_demo_simulation("CASE-MAX")
+    max_temp = max(stream.temperature for stream in max_case.streams)
+    design_temp_margin = float(_criterion(session, "DBC-VESSEL-DT-MARGIN"))
+    vessel_moc = str(_criterion(session, "DBC-VESSEL-MOC"))
+    corrosion_allowance = float(_criterion(session, "DBC-VESSEL-CA"))
+    vessel_code = str(_criterion(session, "DBC-VESSEL-CODE"))
+    psv_set = float(_criterion(session, "DBC-PSV-SET-PRESSURE"))
+
+    record_ids = []
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="MECH-V101",
+            domain=RecordDomain.MECHANICAL,
+            name="V-101 preliminary mechanical datasheet basis",
+            value={
+                "design_pressure_barg": psv_set,
+                "design_temperature_degC": round(max_temp + design_temp_margin, 3),
+                "material_of_construction": vessel_moc,
+                "corrosion_allowance_mm": corrosion_allowance,
+                "design_code": vessel_code,
+                "process_holdup_volume_m3": round(n["holdup_volume_m3"], 3),
+                "final_thickness_and_nozzles": "TBD by mechanical design service",
+            },
+            unit=None,
+            status="mechanical_basis_published_demo",
+            source_id="MECH-DATASHEET-V101",
+            method="published process duty + Design Basis mechanical criteria",
+            object_ids=["EQ-V101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Process holdup volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+                    {"name": "Maximum published temperature", "value": round(max_temp, 3), "unit": "degC"},
+                    {"name": "PSV preliminary set pressure", "value": psv_set, "unit": "barg"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-VESSEL-DT-MARGIN", "name": "Design temperature margin", "value": design_temp_margin, "unit": "degC"},
+                    {"criterion_id": "DBC-VESSEL-MOC", "name": "Material of construction", "value": vessel_moc},
+                    {"criterion_id": "DBC-VESSEL-CA", "name": "Corrosion allowance", "value": corrosion_allowance, "unit": "mm"},
+                    {"criterion_id": "DBC-VESSEL-CODE", "name": "Design code", "value": vessel_code},
+                ],
+                case_results=[
+                    {
+                        "case": label,
+                        "simulation_case_id": pub.simulation_case_id,
+                        "maximum_stream_temperature_degC": max(stream.temperature for stream in pub.streams),
+                        "design_temperature_degC": round(max(stream.temperature for stream in pub.streams) + design_temp_margin, 3),
+                    }
+                    for design_case_id, label in [
+                        ("CASE-NORMAL", "Normal"),
+                        ("CASE-MAX", "Maximum"),
+                        ("CASE-TURNDOWN", "Turndown"),
+                    ]
+                    for pub in [publish_demo_simulation(design_case_id)]
+                ],
+                governing_case="Maximum",
+                governing_reason="Maximum case gives the highest published process temperature in the current case set.",
+                outputs=[
+                    {"name": "Design pressure", "value": psv_set, "unit": "barg"},
+                    {"name": "Design temperature", "value": round(max_temp + design_temp_margin, 3), "unit": "degC"},
+                    {"name": "Material", "value": vessel_moc},
+                    {"name": "Corrosion allowance", "value": corrosion_allowance, "unit": "mm"},
+                    {"name": "Final thickness / nozzle schedule", "value": "TBD by qualified mechanical design service"},
+                ],
+                method="Technical/mechanical basis publisher from process duty and approved Design Basis criteria.",
+                trace=_trace(
+                    trace_id="TRACE-MECH-V101",
+                    calculation_type="vessel_technical_mechanical_basis",
+                    input_sources=[
+                        {"source": "CALC-V101-HOLDUP", "field": "process_holdup_volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+                        {"source": "SIM-002", "field": "maximum_process_temperature", "value": round(max_temp, 3), "unit": "degC"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-PSV-SET-PRESSURE", "value": psv_set, "unit": "barg"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-VESSEL-DT-MARGIN", "value": design_temp_margin, "unit": "degC"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Select maximum process temperature",
+                            "equation": "T_process,max = max(T_streams, maximum case)",
+                            "substitution": f"{max_temp:.3f} degC",
+                            "result": round(max_temp, 3),
+                            "unit": "degC",
+                        },
+                        {
+                            "step": 2,
+                            "title": "Apply design-temperature margin",
+                            "equation": "T_design = T_process,max + DeltaT_margin",
+                            "substitution": f"{max_temp:.3f} + {design_temp_margin:.3f}",
+                            "result": round(max_temp + design_temp_margin, 3),
+                            "unit": "degC",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Assign preliminary design pressure basis",
+                            "equation": "P_design,basis = published PSV set pressure basis",
+                            "substitution": f"{psv_set:.3f} barg",
+                            "result": psv_set,
+                            "unit": "barg",
+                        },
+                        {
+                            "step": 4,
+                            "title": "Publish material/code/corrosion basis",
+                            "equation": "Mechanical basis = approved Design Basis criteria",
+                            "substitution": f"{vessel_moc}; CA={corrosion_allowance:g} mm; {vessel_code}",
+                            "result": "PRELIMINARY MECHANICAL BASIS PUBLISHED",
+                            "unit": None,
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Design temperature >= maximum process temperature", "actual": round(max_temp + design_temp_margin, 3), "criterion": f">= {max_temp:.3f} degC", "result": "PASS"},
+                        {"check": "Material criterion published", "actual": vessel_moc, "criterion": "Approved Design Basis value", "result": "PASS"},
+                        {"check": "Final wall thickness calculated", "actual": "No", "criterion": "Required before mechanical issue", "result": "GATED"},
+                    ],
+                    assumptions=[
+                        "PSV set-pressure basis is used here only as the preliminary pressure-datasheet basis.",
+                    ],
+                    limitations=[
+                        "No wall-thickness, external-pressure, nozzle-reinforcement, support, fatigue or detailed code calculation is included.",
+                    ],
+                    downstream_consumers=[
+                        "V-101 mechanical datasheet",
+                        "Vessel mechanical design service",
+                        "Vendor requisition",
+                        "Cost estimate",
+                    ],
+                    qualification="Preliminary technical/mechanical basis; detailed mechanical calculation remains gated",
+                ),
+            ),
+        )
+    )
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="MECH-P101",
+            domain=RecordDomain.MECHANICAL,
+            name="P-101 preliminary package datasheet basis",
+            value={
+                "rated_flow_tph": round(n["pump_rated_flow_tph"], 3),
+                "rated_head_m": round(n["pump_rated_head_m"], 3),
+                "preliminary_shaft_power_kw": round(n["pump_shaft_kw"], 3),
+                "preliminary_motor_kw": round(n["motor_preliminary_kw"], 3),
+                "driver": "electric motor",
+                "vendor_curve": "TBD during vendor stage",
+            },
+            unit=None,
+            status="mechanical_basis_published_demo",
+            source_id="MECH-DATASHEET-P101",
+            method="published process duty to mechanical package basis",
+            object_ids=["EQ-P101"],
+            metadata=_calculation_detail(
+                inputs=[
+                    {"name": "Rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Rated head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                    {"name": "Shaft power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                ],
+                criteria=[
+                    {"criterion_id": "DBC-MOTOR-MARGIN", "name": "Motor sizing margin", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                    {"name": "Driver type", "value": "Electric motor"},
+                ],
+                case_results=[
+                    {
+                        "case": label,
+                        "simulation_case_id": pub.simulation_case_id,
+                        "flow_tph": round(suc.mass_flow, 3),
+                        "differential_pressure_bar": round(dis.pressure - suc.pressure, 3),
+                    }
+                    for design_case_id, label in [
+                        ("CASE-NORMAL", "Normal"),
+                        ("CASE-MAX", "Maximum"),
+                        ("CASE-TURNDOWN", "Turndown"),
+                    ]
+                    for pub in [publish_demo_simulation(design_case_id)]
+                    for suc in [next(item for item in pub.streams if item.id == "STR-S102")]
+                    for dis in [next(item for item in pub.streams if item.id == "STR-S103")]
+                ],
+                governing_case="Maximum",
+                governing_reason="Mechanical package basis follows the published rated duty derived from the maximum process case.",
+                outputs=[
+                    {"name": "Rated flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                    {"name": "Rated head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                    {"name": "Preliminary shaft power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                    {"name": "Preliminary motor", "value": round(n["motor_preliminary_kw"], 3), "unit": "kW"},
+                    {"name": "Vendor curve / final selection", "value": "TBD during vendor stage"},
+                ],
+                method="Technical/mechanical package basis publisher from process duty.",
+                trace=_trace(
+                    trace_id="TRACE-MECH-P101",
+                    calculation_type="pump_package_technical_basis",
+                    input_sources=[
+                        {"source": "CALC-P101-001", "field": "rated_flow", "value": round(n["pump_rated_flow_tph"], 3), "unit": "t/h"},
+                        {"source": "CALC-P101-001", "field": "rated_head", "value": round(n["pump_rated_head_m"], 3), "unit": "m"},
+                        {"source": "CALC-P101-001", "field": "shaft_power", "value": round(n["pump_shaft_kw"], 3), "unit": "kW"},
+                        {"source": "DB-001 Rev A", "criterion_id": "DBC-MOTOR-MARGIN", "value": _criterion(session, "DBC-MOTOR-MARGIN"), "unit": "%"},
+                    ],
+                    steps=[
+                        {
+                            "step": 1,
+                            "title": "Read published process rated duty",
+                            "equation": "Duty = published process calculation",
+                            "substitution": f'Q={n["pump_rated_flow_tph"]:.3f} t/h, H={n["pump_rated_head_m"]:.3f} m',
+                            "result": "PROCESS DUTY ACCEPTED",
+                            "unit": None,
+                        },
+                        {
+                            "step": 2,
+                            "title": "Publish preliminary driver duty",
+                            "equation": "P_driver,prelim = published motor requirement",
+                            "substitution": f'{n["motor_preliminary_kw"]:.3f} kW',
+                            "result": round(n["motor_preliminary_kw"], 3),
+                            "unit": "kW",
+                        },
+                        {
+                            "step": 3,
+                            "title": "Gate final package selection",
+                            "equation": "Final package = vendor curve + NPSH + mechanical checks",
+                            "substitution": "Vendor data not yet published",
+                            "result": "TBD DURING VENDOR STAGE",
+                            "unit": None,
+                        },
+                    ],
+                    validation_checks=[
+                        {"check": "Rated process duty available", "actual": "Yes", "criterion": "Required", "result": "PASS"},
+                        {"check": "Preliminary motor positive", "actual": round(n["motor_preliminary_kw"], 3), "criterion": "> 0 kW", "result": "PASS"},
+                        {"check": "Vendor curve/NPSHR available", "actual": "No", "criterion": "Required for final selection", "result": "GATED"},
+                    ],
+                    assumptions=[
+                        "Electric motor is the preliminary driver type.",
+                    ],
+                    limitations=[
+                        "No vendor curve, NPSHR, mechanical seal, metallurgy, bearing, vibration or API/vendor package compliance selection is included.",
+                    ],
+                    downstream_consumers=[
+                        "P-101 package datasheet",
+                        "Electrical motor/load list",
+                        "Vendor requisition",
+                        "Cost estimate",
+                    ],
+                    qualification="Preliminary pump-package technical basis",
+                ),
+            ),
+        )
+    )
+
+    result = _set_stage(
+        session,
+        stage=PublishStage.MECHANICAL,
+        summary={
+            "records": record_ids,
+            "V-101_design_temperature_degC": round(max_temp + design_temp_margin, 3),
+            "P-101_preliminary_motor_kw": round(n["motor_preliminary_kw"], 3),
+        },
+    )
+    result.records_written = record_ids
+    session.commit()
+    return result
+
+
+def _instrumentation_cv(session: Session) -> float:
+    row = session.get(EngineeringRecordRow, "CALC-FCV101-CV")
+    if row is None or not isinstance(row.value_json, dict):
+        raise PublicationBlocked("Published FCV-101 Cv sizing is required for costing.")
+    return float(row.value_json["design_cv"])
+
+
+def publish_costing(session: Session) -> PublicationResult:
+    _require_dependencies(session, PublishStage.COSTING)
+    n = _process_numbers(session)
+    design_cv = _instrumentation_cv(session)
+    currency = str(_criterion(session, "DBC-COST-CURRENCY"))
+
+    # Deliberately transparent demo parametric model; not a commercial estimate.
+    vessel_cost = 75000.0 + n["holdup_volume_m3"] * 4200.0
+    pump_cost = 18000.0 + n["motor_preliminary_kw"] * 950.0
+    valve_cost = 5000.0 + design_cv * 180.0
+    instrumentation_package = 22000.0
+    total = vessel_cost + pump_cost + valve_cost + instrumentation_package
+
+    cost_specs = [
+        {
+            "record_id": "COST-V101",
+            "name": "V-101 demo parametric class estimate",
+            "value": vessel_cost,
+            "objects": ["EQ-V101"],
+            "inputs": [
+                {"name": "Published holdup volume", "value": round(n["holdup_volume_m3"], 3), "unit": "m3"},
+            ],
+            "criteria": [
+                {"name": "Demo base cost", "value": 75000.0, "unit": currency},
+                {"name": "Demo volume coefficient", "value": 4200.0, "unit": f"{currency}/m3"},
+            ],
+            "formula": "75000 + holdup_volume_m3 × 4200",
+        },
+        {
+            "record_id": "COST-P101",
+            "name": "P-101 demo parametric class estimate",
+            "value": pump_cost,
+            "objects": ["EQ-P101"],
+            "inputs": [
+                {"name": "Published preliminary motor", "value": round(n["motor_preliminary_kw"], 3), "unit": "kW"},
+            ],
+            "criteria": [
+                {"name": "Demo base cost", "value": 18000.0, "unit": currency},
+                {"name": "Demo motor coefficient", "value": 950.0, "unit": f"{currency}/kW"},
+            ],
+            "formula": "18000 + preliminary_motor_kw × 950",
+        },
+        {
+            "record_id": "COST-FCV101",
+            "name": "FCV-101 demo parametric class estimate",
+            "value": valve_cost,
+            "objects": ["VLV-FCV101", "EQ-P101"],
+            "inputs": [
+                {"name": "Published FCV design Cv", "value": round(design_cv, 3)},
+            ],
+            "criteria": [
+                {"name": "Demo base cost", "value": 5000.0, "unit": currency},
+                {"name": "Demo Cv coefficient", "value": 180.0, "unit": f"{currency}/Cv"},
+            ],
+            "formula": "5000 + design_cv × 180",
+        },
+    ]
+
+    record_ids = []
+    for spec in cost_specs:
+        record_ids.append(
+            _upsert_record(
+                session,
+                record_id=spec["record_id"],
+                domain=RecordDomain.COST,
+                name=spec["name"],
+                value=round(spec["value"], 2),
+                unit=currency,
+                status="class_estimate_demo",
+                source_id="COST-MODEL-DEMO-V1",
+                method="transparent demo parametric estimate; replace with qualified company cost model",
+                object_ids=spec["objects"],
+                metadata={
+                    "estimate_class": "demo",
+                    "commercial_use": False,
+                    **_calculation_detail(
+                        inputs=spec["inputs"],
+                        criteria=spec["criteria"],
+                        case_results=[],
+                        governing_case="Published technical basis",
+                        governing_reason="Cost estimate uses the latest published technical output for this item; no separate process case is selected in the demo cost model.",
+                        outputs=[
+                            {"name": "Estimated cost", "value": round(spec["value"], 2), "unit": currency},
+                        ],
+                        method=f'Demo parametric formula: {spec["formula"]}. Replace with the approved company/licensor cost-estimation service.',
+                        trace=_trace(
+                            trace_id=f'TRACE-{spec["record_id"]}',
+                            calculation_type="demo_parametric_cost_estimate",
+                            input_sources=[
+                                {"source": "Published multidisciplinary technical basis", **row}
+                                for row in spec["inputs"]
+                            ],
+                            steps=[
+                                {
+                                    "step": 1,
+                                    "title": "Read published technical cost driver",
+                                    "equation": "Input = latest published technical result",
+                                    "substitution": str(spec["inputs"]),
+                                    "result": "INPUT ACCEPTED",
+                                    "unit": None,
+                                },
+                                {
+                                    "step": 2,
+                                    "title": "Apply transparent demo parametric formula",
+                                    "equation": spec["formula"],
+                                    "substitution": spec["formula"],
+                                    "result": round(spec["value"], 2),
+                                    "unit": currency,
+                                },
+                            ],
+                            validation_checks=[
+                                {"check": "Estimated cost positive", "actual": round(spec["value"], 2), "criterion": f"> 0 {currency}", "result": "PASS"},
+                                {"check": "Commercial estimating model qualified", "actual": "No", "criterion": "Required for commercial use", "result": "GATED"},
+                            ],
+                            assumptions=[
+                                "Demo coefficients are illustrative and transparent.",
+                            ],
+                            limitations=[
+                                "No location factor, escalation, installation factor, indirects, contingency, vendor quotation or project-specific estimating database is applied.",
+                            ],
+                            downstream_consumers=[
+                                "Project cost dashboard",
+                                "Equipment cost summary",
+                                "Techno-commercial screening",
+                            ],
+                            qualification="Demo non-commercial parametric estimate only",
+                        ),
+                    ),
+                },
+            )
+        )
+
+    record_ids.append(
+        _upsert_record(
+            session,
+            record_id="COST-PACKAGE-TOTAL",
+            domain=RecordDomain.COST,
+            name="Demo section total installed-equipment basis",
+            value={
+                "currency": currency,
+                "vessel": round(vessel_cost, 2),
+                "pump": round(pump_cost, 2),
+                "control_valve": round(valve_cost, 2),
+                "instrumentation_package": round(instrumentation_package, 2),
+                "total": round(total, 2),
+            },
+            unit=None,
+            status="class_estimate_demo",
+            source_id="COST-MODEL-DEMO-V1",
+            method="sum of demo parametric discipline estimates",
+            object_ids=["EQ-V101", "EQ-P101", "VLV-FCV101"],
+            metadata={
+                "estimate_class": "demo",
+                "commercial_use": False,
+                **_calculation_detail(
+                    inputs=[
+                        {"name": "V-101 estimate", "value": round(vessel_cost, 2), "unit": currency},
+                        {"name": "P-101 estimate", "value": round(pump_cost, 2), "unit": currency},
+                        {"name": "FCV-101 estimate", "value": round(valve_cost, 2), "unit": currency},
+                        {"name": "Instrumentation package allowance", "value": round(instrumentation_package, 2), "unit": currency},
+                    ],
+                    criteria=[
+                        {"name": "Estimate class", "value": "Demo / non-commercial"},
+                        {"name": "Currency", "value": currency},
+                    ],
+                    case_results=[],
+                    governing_case="Current published multidisciplinary basis",
+                    governing_reason="Section total is the arithmetic roll-up of the current demo equipment, valve and instrumentation estimates.",
+                    outputs=[
+                        {"name": "Section total", "value": round(total, 2), "unit": currency},
+                    ],
+                    method="Demo multidisciplinary cost roll-up; replace coefficients and scope factors with approved estimating methodology.",
+                    trace=_trace(
+                        trace_id="TRACE-COST-PACKAGE-TOTAL",
+                        calculation_type="demo_section_cost_rollup",
+                        input_sources=[
+                            {"source": "COST-V101", "field": "V-101 estimate", "value": round(vessel_cost, 2), "unit": currency},
+                            {"source": "COST-P101", "field": "P-101 estimate", "value": round(pump_cost, 2), "unit": currency},
+                            {"source": "COST-FCV101", "field": "FCV-101 estimate", "value": round(valve_cost, 2), "unit": currency},
+                            {"source": "Demo instrumentation allowance", "field": "instrumentation package", "value": round(instrumentation_package, 2), "unit": currency},
+                        ],
+                        steps=[
+                            {
+                                "step": 1,
+                                "title": "Sum published demo estimates",
+                                "equation": "Total = vessel + pump + control valve + instrumentation package",
+                                "substitution": f'{vessel_cost:.2f} + {pump_cost:.2f} + {valve_cost:.2f} + {instrumentation_package:.2f}',
+                                "result": round(total, 2),
+                                "unit": currency,
+                            }
+                        ],
+                        validation_checks=[
+                            {"check": "Roll-up arithmetic", "actual": round(total, 2), "criterion": "Equals sum of component estimates", "result": "PASS"},
+                            {"check": "Commercial estimate readiness", "actual": "No", "criterion": "Qualified estimating model + complete scope required", "result": "GATED"},
+                        ],
+                        assumptions=["Current section scope contains only the published demo equipment/valve/instrument allowance."],
+                        limitations=["This is not a Class 3/4/5 commercial estimate and must not be used for commercial commitment."],
+                        downstream_consumers=["Project dashboard", "Cost summary", "Techno-commercial screening"],
+                        qualification="Demo non-commercial cost roll-up",
+                    ),
+                ),
+            },
+        )
+    )
+
+    result = _set_stage(
+        session,
+        stage=PublishStage.COSTING,
+        summary={
+            "records": record_ids,
+            "currency": currency,
+            "demo_total": round(total, 2),
+            "note": "Replace demo coefficients with approved licensor/company cost model.",
+        },
+    )
+    result.records_written = record_ids
+    session.commit()
+    return result
+
+
+_PUBLISHERS = {
+    PublishStage.DESIGN_BASIS: publish_design_basis,
+    PublishStage.SIMULATION: publish_simulation,
+    PublishStage.CONFIGURATION: publish_configuration,
+    PublishStage.PROCESS: publish_process,
+    PublishStage.INSTRUMENTATION: publish_instrumentation,
+    PublishStage.MECHANICAL: publish_mechanical,
+    PublishStage.COSTING: publish_costing,
+}
+
+
+def publish_stage(session: Session, stage: PublishStage) -> PublicationResult:
+    return _PUBLISHERS[stage](session)
+
+
+def publish_all(session: Session) -> list[PublicationResult]:
+    results = []
+    for stage in STAGE_ORDER:
+        results.append(publish_stage(session, stage))
+    return results

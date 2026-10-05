@@ -1,0 +1,43 @@
+{
+  "project_id": "BDEP-DEMO-001",
+  "equipment": [
+    {
+      "id": "EQ-000001",
+      "tag": "V-101",
+      "equipment_type": "vertical_separator",
+      "service": "Feed Separator",
+      "ports": [
+        {"name": "FEED_INLET", "kind": "process", "direction": "in"},
+        {"name": "VAPOR_OUTLET", "kind": "process", "direction": "out"},
+        {"name": "LIQUID_OUTLET", "kind": "process", "direction": "out"},
+        {"name": "VENT", "kind": "vent", "direction": "out"},
+        {"name": "DRAIN", "kind": "drain", "direction": "out"},
+        {"name": "PSV_NOZZLE", "kind": "process", "direction": "out"}
+      ]
+    },
+    {
+      "id": "EQ-000002",
+      "tag": "P-101",
+      "equipment_type": "centrifugal_pump",
+      "service": "Separator Bottoms Pump",
+      "ports": [
+        {"name": "SUCTION", "kind": "process", "direction": "in"},
+        {"name": "DISCHARGE", "kind": "process", "direction": "out"},
+        {"name": "DRAIN", "kind": "drain", "direction": "out"}
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "CONN-000001",
+      "source": {
+        "object_id": "EQ-000001",
+        "port": "LIQUID_OUTLET"
+      },
+      "target": {
+        "object_id": "EQ-000002",
+        "port": "SUCTION"
+      }
+    }
+  ]
+}
