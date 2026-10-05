@@ -231,26 +231,29 @@ def test_lines_are_contextual_not_dumped_into_every_object_calculation_tab():
 def test_engineering_workspace_keeps_existing_features_in_three_pane_shell():
     html = _render_db_view()
     for text in [
-        "Engineering Model Browser",
+        "Engineering Navigator",
+        "Approved Engineering Baseline",
+        "Engineering Change Packages",
+        "Engineering Review",
+        "Integration Queue",
+        "Release Candidate",
+        "Client Issue",
         "P&ID 001 — Engineering",
         "Plant Model / Digital Thread",
         "P&ID 002 — Continuation",
-        "Project Dashboard",
+        "Dashboard",
         "HAZOP",
-        "BDEP Summaries",
-        "Configuration Match",
-        "Compiler / Plant Data",
-        "Project Workflow & Views",
-        "Publish Stages",
-        "Sketch / Stencils & Drafting",
-        "Exports",
+        "Summaries",
         "Tabs",
         "Properties",
         "Detailed View",
         "Pop out / Calculation Workspace",
+        "Add / Library",
+        "Drafting Tools",
     ]:
         assert text in html
 
+    assert "Project Workflow & Views" not in html
     assert 'id="leftSidebar"' in html
     assert 'id="pidCanvas"' in html
     assert 'id="rightSidebar"' in html
@@ -301,19 +304,27 @@ def test_workspace_supports_drag_drop_stencils_guided_connectors_and_autocorrect
 
 
 
-def test_left_sidebar_is_category_model_browser_not_cluttered_menu():
+def test_left_sidebar_is_engineering_navigator_with_broad_object_and_drawing_groups():
     html = _render_db_view()
     for label in [
-        "Engineering Model Browser",
+        "Engineering Navigator",
         "Equipment",
-        "Instruments",
         "Streams",
-        "Piping / Lines",
-        "Valves",
+        "Pipelines",
+        "Lines",
+        "Inline Valves",
+        "Instruments / Control",
+        "Control Valves",
+        "PSV / Relief Protection",
+        "Transmitters / Indicators / Controllers",
         "Control Loops / Signals",
         "Instrument Connections",
         "Boundaries / Off-page",
-        "Drawings / Views",
+        "Drawings",
+        "PFD",
+        "P&ID",
+        "MSD",
+        "Plant Model",
     ]:
         assert label in html
 
@@ -321,6 +332,7 @@ def test_left_sidebar_is_category_model_browser_not_cluttered_menu():
     assert 'id="modelSearch"' in html
     assert "function renderModelBrowser" in html
     assert "function selectFromBrowser" in html
+    assert "function setLeftMode" in html
 
 
 def test_browser_child_selection_focuses_canvas_and_populates_properties():
@@ -333,11 +345,16 @@ def test_browser_child_selection_focuses_canvas_and_populates_properties():
     assert 'svg.setAttribute("viewBox","0 0 1120 690")' in html
 
 
-def test_drawing_selection_has_no_blue_round_or_blue_route_highlight():
+def test_drawing_selection_uses_safe_amber_overlay_not_blue_round():
     html = _render_db_view()
     assert "rgba(37,99,235,.16)" not in html
     assert "stroke:#1d4ed8" not in html
     assert "route-hit:hover{stroke:rgba(15,23,42,.08)}" in html
+    assert "selection-object" in html
+    assert "selection-route" in html
+    assert "function applyCanvasSelection" in html
+    assert "applyCanvasSelection(id)" in html
+    assert "stroke:#c47a16" in html
 
 
 def test_drawing_quality_is_a_right_inspector_tab_not_bottom_information_panel():
