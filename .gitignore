@@ -47,3 +47,6 @@ pid_documents/
 data/pid_corpus/generated/
 services/plant-model-service/data/pid_corpus/generated/
 services/plant-model-service/data/pid_corpus/benchmark_report.json
+
+# External licensed reference files are downloaded locally, never checked in
+services/plant-model-service/data/pid_corpus/external/
