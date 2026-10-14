@@ -43,6 +43,7 @@ def test_client_package_workflow_requires_approved_legend_before_extraction(monk
                          poolclass=StaticPool)
     Base.metadata.create_all(engine)
     monkeypatch.setattr(intake,"_database",lambda:engine)
+    monkeypatch.setattr(pid,"_database",lambda:engine)
     monkeypatch.setenv("BDEP_PID_STORAGE",str(tmp_path))
     app=FastAPI()
     app.include_router(intake.router)
