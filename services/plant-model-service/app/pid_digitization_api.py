@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import fitz
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import JSON, DateTime, String
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 from .db_schema import Base, engine_from_url
 from .persistence import PROJECT_ID, ensure_demo_seeded
 from .pid_digitization import MAX_PDF_BYTES, accepted_plant_draft, extract_pid_pdf
+from .pid_digitization_renderer import render_pid_digitization_html
 
 
 class PidImportRow(Base):
@@ -179,3 +180,8 @@ def get_pid_page_preview(import_id: str, page_number: int):
         png, media_type="image/png",
         headers={"Cache-Control": "private, no-store"},
     )
+
+
+@router.get("/pid-digitization", response_class=HTMLResponse)
+def pid_digitization_view():
+    return render_pid_digitization_html()
