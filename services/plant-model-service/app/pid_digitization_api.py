@@ -18,6 +18,7 @@ from .db_schema import Base, engine_from_url
 from .persistence import PROJECT_ID, ensure_demo_seeded
 from .pid_digitization import MAX_PDF_BYTES, accepted_plant_draft
 from .pid_pipeline import build_pid_extraction
+from .pid_training import build_verified_annotation_export
 from .pid_digitization_renderer import render_pid_digitization_html
 
 
@@ -77,6 +78,16 @@ class TagDecision(BaseModel):
 class ReviewPayload(BaseModel):
     reviewer: str = Field(min_length=2, max_length=120)
     decisions: list[TagDecision] = Field(min_length=1)
+
+
+class SymbolDecision(BaseModel):
+    tag_candidate_id: str
+    decision: str = Field(pattern="^(accepted|rejected|unreviewed)$")
+
+
+class SymbolReviewPayload(BaseModel):
+    reviewer: str = Field(min_length=2, max_length=120)
+    decisions: list[SymbolDecision] = Field(min_length=1)
 
 
 class ConnectionDecision(BaseModel):
@@ -157,7 +168,7 @@ def review_pid_tags(import_id: str, payload: ReviewPayload):
         for hypothesis in extracted.get("symbol_hypotheses", []):
             candidate = next((c for c in extracted["candidates"] if c["id"] == hypothesis["tag_id"]), None)
             if candidate is not None:
-                hypothesis["review_status"] = candidate["review_status"]
+                hypothesis["tag_review_status"] = candidate["review_status"]
         row.state = (
             "tags_reviewed"
             if all(c["review_status"] != "unreviewed" for c in extracted["candidates"])
@@ -250,5 +261,48 @@ def get_pid_evidence(import_id: str):
             "symbols": row.extraction_json.get("symbol_hypotheses", []),
             "connections": row.extraction_json.get("connection_proposals", []),
             "geometry": row.extraction_json.get("vector_evidence", {}),
+            "network_diagnostics": row.extraction_json.get("network_diagnostics", {}),
+            "unresolved_tees": row.extraction_json.get("unresolved_tees", []),
             "pipeline": row.extraction_json.get("pipeline", {}),
         }
+
+
+@router.post("/api/pid-digitization/imports/{import_id}/symbols/review")
+def review_pid_symbols(import_id: str, payload: SymbolReviewPayload):
+    with Session(_database()) as session:
+        row = _load(session, import_id)
+        extracted = dict(row.extraction_json)
+        hypotheses = extracted.get("symbol_hypotheses", [])
+        by_id = {s["tag_id"]: s for s in hypotheses}
+        known_tags = {c["id"]: c for c in extracted.get("candidates", [])}
+        for decision in payload.decisions:
+            if decision.tag_candidate_id not in by_id:
+                raise HTTPException(422, detail="Unknown symbol proposal")
+            tag = known_tags[decision.tag_candidate_id]
+            symbol = by_id[decision.tag_candidate_id]
+            if decision.decision == "accepted":
+                if tag["review_status"] != "accepted":
+                    raise HTTPException(422, detail="Approve source tag before symbol")
+                if not symbol.get("geometry_id"):
+                    raise HTTPException(422, detail="Symbol has no verified visual candidate")
+        timestamp = datetime.now(timezone.utc).isoformat()
+        for decision in payload.decisions:
+            symbol = by_id[decision.tag_candidate_id]
+            symbol["review_status"] = decision.decision
+            symbol["reviewed_by"] = payload.reviewer
+            symbol["reviewed_at"] = timestamp
+        extracted["review_history"] = [
+            *extracted.get("review_history", []),
+            {"stage": "symbol_review", "reviewed_by": payload.reviewer,
+             "at": timestamp, "decisions": len(payload.decisions)}
+        ]
+        row.extraction_json = extracted
+        session.commit()
+        return _public(row)
+
+
+@router.get("/api/pid-digitization/imports/{import_id}/annotations")
+def get_pid_annotations(import_id: str):
+    with Session(_database()) as session:
+        row = _load(session, import_id)
+        return build_verified_annotation_export(import_id, row.extraction_json)

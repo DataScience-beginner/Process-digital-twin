@@ -78,11 +78,49 @@ def _build_vector(out: Path, variant="baseline", pages=1) -> Path:
     return out / filename
 
 
+def _build_elbow_crossing(out: Path) -> Path:
+    """Multi-stroke elbows, plus non-connected solid interior crossing."""
+    doc = fitz.open()
+    page = doc.new_page(width=760, height=420)
+    sh = page.new_shape()
+    sh.draw_rect(fitz.Rect(70, 120, 150, 245))
+    sh.draw_circle(fitz.Point(560, 210), 30)
+    # V-101 to FCV-101 via two distinct elbow joins.
+    sh.draw_line((150, 180), (200, 180))
+    sh.draw_line((200, 180), (200, 280))
+    sh.draw_line((200, 280), (305, 280))
+    sh.draw_polyline([(305, 261), (330, 280), (305, 299), (305, 261)])
+    sh.draw_polyline([(355, 261), (330, 280), (355, 299), (355, 261)])
+    # FCV-101 to P-101 via two more elbows.
+    sh.draw_line((355, 280), (440, 280))
+    sh.draw_line((440, 280), (440, 210))
+    sh.draw_line((440, 210), (530, 210))
+    # Solid crossing at two line interiors: MUST NOT become a junction.
+    sh.draw_line((250, 245), (250, 315))
+    # Dashed signal crosses process line, not a process junction.
+    sh.finish(color=(0, 0, 0), width=1.6)
+    sh.commit()
+    sh = page.new_shape()
+    sh.draw_line((160, 230), (260, 230))
+    sh.finish(color=(0, 0, 0), width=.8, dashes="[3 3] 0")
+    sh.commit()
+    for x, y, tag in [
+        (82, 151, "V-101"), (525, 260, "P-101"),
+        (292, 244, "FCV-101"), (38, 35, "BDEP SYNTHETIC ELBOW TOPOLOGY"),
+    ]:
+        _text(page, x, y, tag, 10)
+    target = out / "elbow_crossing.pdf"
+    doc.save(target, garbage=4, deflate=True)
+    doc.close()
+    return target
+
+
 def generate(output_dir: Path) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     base = _build_vector(output_dir)
     _build_vector(output_dir, "complex")
     _build_vector(output_dir, "multisheet", pages=2)
+    _build_elbow_crossing(output_dir)
 
     original = fitz.open(base)
     original_page = original[0]
@@ -104,9 +142,12 @@ def generate(output_dir: Path) -> dict:
         "expected_tags": ["V-101", "P-101", "FCV-101", "PSV-101", "PT-101"],
         "known_process_adjacencies": [
             ["V-101", "FCV-101"],
-            ["FCV-101", "P-101"]
+            ["FCV-101", "P-101"],
+            ["V-101", "PSV-101"]
         ],
         "negative_example": "Crossing of instrument signal and process piping is not a process junction.",
+        "extra_fixture": "elbow_crossing.pdf",
+        "expected_elbow_adjacencies": [["V-101", "FCV-101"], ["FCV-101", "P-101"]],
         "note": "Graph labels are benchmark ground truth; extraction must not copy them during inference."
     }
     (output_dir / "expected_graph.json").write_text(json.dumps(expected, indent=2))

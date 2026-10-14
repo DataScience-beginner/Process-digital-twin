@@ -46,3 +46,4 @@ pid_documents/
 # Locally generated P&ID benchmark corpus
 data/pid_corpus/generated/
 services/plant-model-service/data/pid_corpus/generated/
+services/plant-model-service/data/pid_corpus/benchmark_report.json
