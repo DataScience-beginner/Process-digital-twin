@@ -262,6 +262,7 @@ def get_pid_evidence(import_id: str):
             "connections": row.extraction_json.get("connection_proposals", []),
             "geometry": row.extraction_json.get("vector_evidence", {}),
             "network_diagnostics": row.extraction_json.get("network_diagnostics", {}),
+            "unresolved_tees": row.extraction_json.get("unresolved_tees", []),
             "pipeline": row.extraction_json.get("pipeline", {}),
         }
 
