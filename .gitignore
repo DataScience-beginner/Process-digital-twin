@@ -35,3 +35,10 @@ secrets/
 # Logs
 *.log
 logs/
+
+# Uploaded source engineering documents and local demo databases
+pid_documents/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
