@@ -20,6 +20,7 @@ from .pid_geometry import (
     detect_symbol_hypotheses, extract_vector_evidence, propose_connections,
 )
 from .pid_raster_geometry import extract_raster_evidence
+from .pid_network import propose_network_connections
 
 
 def normalize_pid_input(raw: bytes, filename: str) -> tuple[bytes, dict[str, Any]]:
@@ -160,9 +161,11 @@ def build_pid_extraction(
         "warnings": vector["warnings"] + raster["warnings"],
     }
     symbols = detect_symbol_hypotheses(extracted["candidates"], geometry["primitives"])
-    links = propose_connections(symbols, geometry["segments"], extracted["document_sha256"])
+    network = propose_network_connections(symbols, geometry["segments"], extracted["document_sha256"])
+    links = network["connection_proposals"]
     extracted["symbol_hypotheses"] = symbols
     extracted["connection_proposals"] = links
+    extracted["network_diagnostics"] = network["diagnostics"]
     extracted["vector_evidence"] = geometry
     extracted["warnings"].extend(geometry["warnings"])
     extracted["pipeline"] = {
@@ -172,7 +175,7 @@ def build_pid_extraction(
         "vector_geometry": "complete",
         "raster_geometry": "attempted_offline_heuristics",
         "symbol_recognition": "tag_plus_geometric_hypotheses_only",
-        "graph_reconstruction": "direct_stroke_hypotheses_only",
+        "graph_reconstruction": "multi_segment_endpoint_graph_hypotheses",
         "engineer_review": "required",
         "digital_plant": "draft_only",
     }
