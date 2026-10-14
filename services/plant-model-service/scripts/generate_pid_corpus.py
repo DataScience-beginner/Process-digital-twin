@@ -142,7 +142,8 @@ def generate(output_dir: Path) -> dict:
         "expected_tags": ["V-101", "P-101", "FCV-101", "PSV-101", "PT-101"],
         "known_process_adjacencies": [
             ["V-101", "FCV-101"],
-            ["FCV-101", "P-101"]
+            ["FCV-101", "P-101"],
+            ["V-101", "PSV-101"]
         ],
         "negative_example": "Crossing of instrument signal and process piping is not a process junction.",
         "extra_fixture": "elbow_crossing.pdf",
