@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.models import PlantModel
 from app.pid_digitization import accepted_plant_draft
 from app.pid_network import propose_network_connections
+from app.pid_junctions import propose_unresolved_tees
 from app.pid_pipeline import build_pid_extraction
 from scripts.generate_pid_corpus import generate
 
@@ -114,3 +115,25 @@ def test_crossing_segments_dont_merge_when_both_interiors_intersect():
     edges = result["connection_proposals"]
     assert any({e["tag_a"], e["tag_b"]} == {"P-101", "FCV-101"} for e in edges)
     assert not any("V-101" in (e["tag_a"], e["tag_b"]) for e in edges)
+
+
+def test_endpoint_tee_flagged_for_review_but_crossings_not_mistaken_for_tees():
+    tee = [
+        _segment("trunk", 40, 0, 40, 100),
+        _segment("branch", 40, 50, 85, 50),
+        _segment("cross", 0, 65, 90, 65),  # interior/interior crossing
+        _segment("signal", 40, 25, 82, 25, "dashed"),
+    ]
+    result = propose_unresolved_tees(tee, "DOC-SHA")
+    tee_evidence = [
+        j for j in result
+        if set(j["source_segment_ids"]) == {"SEG-trunk", "SEG-branch"}
+    ]
+    assert len(tee_evidence) == 1, result
+    assert tee_evidence[0]["connection_state"] == "not_merged"
+    assert tee_evidence[0]["requires_human_junction_decision"]
+    assert not any("SEG-signal" in j["source_segment_ids"] for j in result)
+    assert not any(
+        set(j["source_segment_ids"]) == {"SEG-trunk", "SEG-cross"}
+        for j in result
+    )
