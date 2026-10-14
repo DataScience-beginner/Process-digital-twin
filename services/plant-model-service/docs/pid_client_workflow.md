@@ -39,7 +39,7 @@ generated and are not a measure of industrial accuracy.
 Customer sends PDF drawing package (one or multiple original documents)
    |
    v
-Client P&ID intake /pid-client-intake
+Client P&ID intake /pid-client-intake: multiple PDFs or a single ZIP
    |
    v
 File preflight: PDF signature / size / page count / original SHA-256
@@ -87,7 +87,7 @@ Non-publishable PlantModel draft (browfield source evidence retained)
 
 ### HTTP endpoints
 
-- `POST /api/pid-digitization/client-batches` multipart
+- `POST /api/pid-digitization/client-batches/zip` single ZIP archive, with bounded in-memory PDF extraction\n- `POST /api/pid-digitization/client-batches` multipart
   (`client_label`, `package_label`, repeated `files`)
 - `GET /api/pid-digitization/client-batches/{id}`
 - `GET /api/pid-digitization/client-batches/{id}/readiness`
@@ -100,7 +100,7 @@ Non-publishable PlantModel draft (browfield source evidence retained)
 
 ### Safe limits in prototype
 
-- Accepts only individual PDF files, not ZIP; 1–12 files, <=20 MB each,
+- Accepts multiple PDF files or a single ZIP archive of PDFs; 1–12 PDF members, <=20 MB each,
   <=70 MB combined; <=80 pages per document.
 - Individual drawing pages are extracted *after* they are approved as P&ID
   and at least one legend sheet is approved as legend.
