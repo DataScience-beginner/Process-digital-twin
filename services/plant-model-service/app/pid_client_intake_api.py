@@ -357,6 +357,59 @@ def analyze_client_sheet(batch_id: str, doc_id: str, page: int, ocr: bool = Fals
         }
 
 
+@router.post("/api/pid-digitization/client-batches/{batch_id}/analyze-approved")
+def analyze_approved_sheets(batch_id: str, ocr: bool = False, limit: int = 10):
+    """Bounded sequential proof-of-concept for real client drawing packages.
+
+    Uses identical, independently reviewed source-sheet pipeline as single
+    page analysis. Persists import IDs for restart/idempotent retries.
+    Production should use durable asynchronous jobs rather than blocking HTTP.
+    """
+    if not (1 <= limit <= 10):
+        raise HTTPException(422, detail="Prototype supports 1–10 sheets per run")
+    with Session(_database()) as session:
+        row = _load(session, batch_id)
+        manifest = dict(row.manifest_json)
+        readiness = _validate_package(manifest["documents"])
+        if not readiness["legend_sheets_approved"]:
+            raise HTTPException(409, detail="Legend sheets require engineer approval first")
+        approved = [
+            (document["id"], page["page"])
+            for document in manifest["documents"]
+            for page in document["preflight"]["pages"]
+            if page["role"] == "pid" and page["role_review_status"] == "accepted"
+        ]
+        existing = dict(manifest.get("extracted_pid_sheets", {}))
+    if not approved:
+        raise HTTPException(409, detail="No engineer-approved P&ID pages")
+    results = []
+    for doc_id, page in approved[:limit]:
+        key = f"{doc_id}:{page}"
+        if key in existing:
+            results.append({**existing[key], "reused": True})
+            continue
+        response = analyze_client_sheet(batch_id, doc_id, page, ocr=ocr)
+        response["reused"] = False
+        results.append(response)
+        # Persist after each completed page so interrupted tests can resume.
+        with Session(_database()) as session:
+            row = _load(session, batch_id)
+            manifest = dict(row.manifest_json)
+            imports = dict(manifest.get("extracted_pid_sheets", {}))
+            imports[key] = response
+            manifest["extracted_pid_sheets"] = imports
+            row.manifest_json = manifest
+            session.commit()
+    return {
+        "batch_id": batch_id, "processed": len(results),
+        "eligible_sheets": len(approved),
+        "remaining_sheets": max(0, len(approved) - limit),
+        "results": results,
+        "draft_only": True,
+        "design_warning": "Synchronous limited pilot; use project-scoped queued background workers in production",
+    }
+
+
 @router.post("/api/pid-digitization/client-batches/{batch_id}/legends/review")
 def review_client_legend_examples(batch_id: str, review: LegendReview):
     """Approve/reject visual legend examples independently of OCR labels.
