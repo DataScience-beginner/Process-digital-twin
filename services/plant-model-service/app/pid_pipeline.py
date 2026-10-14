@@ -23,6 +23,7 @@ from .pid_raster_geometry import extract_raster_evidence
 from .pid_network import propose_network_connections
 from .pid_junctions import propose_unresolved_tees
 from .pid_junction_review import reviewed_network
+from .pid_mixed_ocr import extract_mixed_page_ocr
 
 
 def normalize_pid_input(raw: bytes, filename: str) -> tuple[bytes, dict[str, Any]]:
@@ -148,12 +149,36 @@ def build_pid_extraction(
     extracted["input"] = input_meta
     for tag in extracted["candidates"]:
         tag.setdefault("source_method", "native_pdf_text")
+    mixed_ocr_stats = []
     if ocr:
         supplement, warnings = _ocr_empty_pages(
             normalized_pdf, extracted["candidates"], extracted["pages"]
         )
         extracted["candidates"].extend(supplement)
         extracted["warnings"].extend(warnings)
+        # In real CAD exports, drawing text is rasterized while title-block
+        # text remains native; skipping OCR on any page with native text
+        # missed most instrument-loop labels.
+        counts = {}
+        for p in extracted["pages"]:
+            page_number = p["page"]
+            number = sum(t["page"] == page_number and
+                         t.get("source_method") == "native_pdf_text"
+                         for t in extracted["candidates"])
+            counts[page_number] = number if p["has_text"] else 999
+        extra, mixed_warnings, mixed_ocr_stats = extract_mixed_page_ocr(
+            normalized_pdf, native_tag_count_by_page=counts
+        )
+        def _close(a, b):
+            return a["tag"] == b["tag"] and a["page"] == b["page"] and (
+                abs(a["bbox"][0]-b["bbox"][0]) < 8
+                and abs(a["bbox"][1]-b["bbox"][1]) < 8
+            )
+        for cand in extra:
+            if not any(_close(cand, existing) for existing in extracted["candidates"]):
+                extracted["candidates"].append(cand)
+        extracted["warnings"].extend(mixed_warnings)
+    extracted["mixed_content_ocr"] = mixed_ocr_stats
     vector = extract_vector_evidence(normalized_pdf)
     vector_pages = {p["page"] for p in vector["segments"] + vector["primitives"]}
     raster = extract_raster_evidence(normalized_pdf, vector_pages)
