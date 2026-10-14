@@ -42,3 +42,7 @@ pid_documents/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Locally generated P&ID benchmark corpus
+data/pid_corpus/generated/
+services/plant-model-service/data/pid_corpus/generated/
