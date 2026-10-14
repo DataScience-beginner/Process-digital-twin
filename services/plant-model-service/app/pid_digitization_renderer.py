@@ -28,7 +28,7 @@ button:focus,input:focus,select:focus{outline:2px solid #297bb3}#entries{flex:1;
 <p id="summary" class="muted"></p><div class="row"><div id="entries"></div>
 <div id="source"><img id="pageImage" alt="Original engineering drawing page"><div id="mark"></div><svg id="routeOverlay" aria-hidden="true"></svg></div></div>
 <h2>3. Review proposed process connections</h2><p class="muted">Geometric hypotheses only. Accept only after verifying source stroke, endpoints and process direction.</p>
-<div id="connections"></div><button id="saveLinks" type="button">Save connection review</button><h2>4. Digital plant draft (not publishable)</h2><pre id="result" aria-live="polite"></pre></section></main><script>
+<div id="connections"></div><h2>Unresolved T-junctions (not joined)</h2><div id="unresolvedTees" class="muted"></div><button id="saveLinks" type="button">Save connection review</button><h2>4. Digital plant draft (not publishable)</h2><pre id="result" aria-live="polite"></pre></section></main><script>
 (function(){
 var data=null;var el=function(id){return document.getElementById(id)};
 function message(s){el('state').textContent=s}
@@ -60,8 +60,8 @@ var checked=document.createElement('select');checked.className='symbol-status';c
 ['unreviewed','accepted','rejected'].forEach(function(status){checked.add(new Option('Shape '+status,status))});
 checked.value=symbol.review_status;row.append(name,checked)}
 entries.append(row)});
-if(!subset.length)entries.textContent='No detected tags on this page.';showLinks(Number(n))}
-function display(){el('review').hidden=false;el('summary').textContent=data.candidates.length+' candidate mentions, '+(data.symbol_hypotheses||[]).filter(function(s){return s.geometry_id}).length+' visual matches, '+(data.connection_proposals||[]).length+' unverified connection proposals, '+data.page_count+' pages. '+data.warnings.join(' ');
+if(!subset.length)entries.textContent='No detected tags on this page.';showLinks(Number(n));showTees(Number(n))}
+function display(){el('review').hidden=false;el('summary').textContent=data.candidates.length+' candidate mentions, '+(data.symbol_hypotheses||[]).filter(function(s){return s.geometry_id}).length+' visual matches, '+(data.connection_proposals||[]).length+' unverified connection proposals, '+(data.unresolved_tees||[]).length+' unresolved T points, '+data.page_count+' pages. '+data.warnings.join(' ');
 var p=el('page');var current=p.value;p.replaceChildren();data.pages.forEach(function(page){p.add(new Option('Page '+page.page,page.page))});p.value=current&&data.pages.some(function(x){return String(x.page)===current})?current:'1';showPage(p.value)}
 el('upload').onsubmit=async function(event){event.preventDefault();message('Extracting document…');var files=el('pdf').files;if(!files.length)return;
 var fd=new FormData();fd.append('file',files[0]);try{data=await api('/api/pid-digitization/imports?ocr='+el('ocr').checked,{method:'POST',body:fd});message('Import saved: '+data.id);display()}catch(e){message(e.message)}};
@@ -69,6 +69,10 @@ el('page').onchange=function(){showPage(el('page').value)};
 el('save').onclick=async function(){var reviewer=el('reviewer').value.trim();if(reviewer.length<2){message('Provide reviewer ID');return}
 var decisions=Array.from(el('entries').querySelectorAll('.tag-status')).map(function(s){return {candidate_id:s.dataset.id,decision:s.value}});
 if(!decisions.length)return;try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Review saved.');display()}catch(e){message(e.message)}};
+function showTees(page){var area=el('unresolvedTees');area.replaceChildren();var links=(data.unresolved_tees||[]).filter(function(x){return x.page===page});
+if(!links.length){area.textContent='No endpoint-to-interior tee candidates.';return}
+links.forEach(function(edge){var btn=document.createElement('button');btn.type='button';btn.textContent='Unresolved tee at '+edge.point.join(', ');
+btn.onclick=function(){highlight(edge)};area.append(btn)})}
 function showLinks(page){var area=el('connections');area.replaceChildren();
 var links=(data.connection_proposals||[]).filter(function(edge){return edge.page===page});
 if(!links.length){area.textContent='No traced geometric connections proposed on this page. Manual topology review is required.';return}
