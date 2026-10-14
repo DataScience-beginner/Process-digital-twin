@@ -83,12 +83,26 @@ def _legend_candidates(page, original_sha: str, page_number: int) -> list[dict]:
     matches = []
     for term in P_AND_ID_TERMS:
         for box in page.search_for(term, quads=False)[:5]:
+            # Suggest a left-adjacent crop for operator inspection only.
+            # Client legend layouts vary; this is NOT a verified symbol box.
+            crop = [
+                round(max(0, box.x0 - 105), 2),
+                round(max(0, box.y0 - 12), 2),
+                round(max(0, box.x0 - 4), 2),
+                round(min(page.rect.height, box.y1 + 12), 2),
+            ]
+            evidence_id = hashlib.sha256(
+                f"{original_sha}:{page_number}:{term}:{list(box)}".encode()
+            ).hexdigest()[:20]
             matches.append({
+                "id": "LEGEND-" + evidence_id,
                 "label": term,
                 "page": page_number,
                 "source_pdf_sha256": original_sha,
                 "bbox": [round(v, 2) for v in box],
                 "evidence_type": "legend_text_not_symbol_annotation",
+                "proposed_symbol_crop_pdf": crop,
+                "proposed_crop_status": "unreviewed_geometric_guess",
                 "review_status": "unreviewed",
             })
             if len(matches) >= MAX_LEGEND_EXAMPLES:
