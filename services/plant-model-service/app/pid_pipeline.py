@@ -21,6 +21,7 @@ from .pid_geometry import (
 )
 from .pid_raster_geometry import extract_raster_evidence
 from .pid_network import propose_network_connections
+from .pid_junctions import propose_unresolved_tees
 
 
 def normalize_pid_input(raw: bytes, filename: str) -> tuple[bytes, dict[str, Any]]:
@@ -162,10 +163,13 @@ def build_pid_extraction(
     }
     symbols = detect_symbol_hypotheses(extracted["candidates"], geometry["primitives"])
     network = propose_network_connections(symbols, geometry["segments"], extracted["document_sha256"])
+    unresolved_tees = propose_unresolved_tees(geometry["segments"], extracted["document_sha256"])
     links = network["connection_proposals"]
     extracted["symbol_hypotheses"] = symbols
     extracted["connection_proposals"] = links
     extracted["network_diagnostics"] = network["diagnostics"]
+    extracted["unresolved_tees"] = unresolved_tees
+    extracted["network_diagnostics"]["unresolved_tees"] = len(unresolved_tees)
     extracted["vector_evidence"] = geometry
     extracted["warnings"].extend(geometry["warnings"])
     extracted["pipeline"] = {
