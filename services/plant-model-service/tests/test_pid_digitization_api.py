@@ -55,6 +55,27 @@ def test_upload_review_preview_and_unconnected_draft(monkeypatch, tmp_path):
     assert reviewed.status_code == 200, reviewed.text
     assert reviewed.json()["state"] == "tags_reviewed"
 
+    no_labels = client.get(f"/api/pid-digitization/imports/{import_id}/annotations")
+    assert no_labels.status_code == 200
+    assert no_labels.json()["annotations"] == []  # tag review does not imply symbol review
+    symbols = [s for s in reviewed.json()["symbol_hypotheses"]
+               if s.get("geometry_id")]
+    assert symbols
+    checked = client.post(
+        f"/api/pid-digitization/imports/{import_id}/symbols/review",
+        json={"reviewer": "eng-tester",
+              "decisions": [{"tag_candidate_id": symbol["tag_id"],
+                             "decision": "accepted"} for symbol in symbols]},
+    )
+    assert checked.status_code == 200, checked.text
+    annotation = client.get(f"/api/pid-digitization/imports/{import_id}/annotations")
+    assert annotation.status_code == 200
+    labels = annotation.json()
+    assert labels["annotations"]
+    assert all(a["bbox"][2] > 0 and a["bbox"][3] > 0
+               for a in labels["annotations"])
+    assert all(a["reviewed_by"] == "eng-tester" for a in labels["annotations"])
+
     draft = client.get(f"/api/pid-digitization/imports/{import_id}/plant-draft")
     assert draft.status_code == 200
     assert draft.json()["publish_ready"] is False
