@@ -1,93 +1,172 @@
-# Digital BDEP — Legacy P&ID Digitization MVP
+# Digital BDEP — Brownfield P&ID digitization pipeline
 
-This first module adds the **brownfield (existing-plant) entry point** alongside
-Digital BDEP's existing structured-simulation → plant-model → drawing workflow.
+Status: **working engineering prototype, awaiting full integration/CI validation**.
+This module is deliberately separate from greenfield simulation → plant-model compilation.
 
-## Available now (technical MVP)
+## 1. Input corpus (ready to generate)
 
-- Upload a **born-digital PDF** locally through the BDEP web service.
-- Detect known equipment, valve and instrument tag **candidates** from vector text.
-- Record page number, exact PDF-space bounding box, source string and PDF SHA-256.
-- Display original source page and highlight candidate positions for human review.
-- Accept/reject each candidate with reviewer ID and persisted review history.
-- Produce a **disconnected, explicitly non-publishable** draft compatible with
-  the existing `PlantModel` schema for supported object types.
-- Retain the original PDF on the BDEP host. No external AI/cloud OCR service is called.
+A rights-aware dataset registry is committed at:
+`data/pid_corpus/catalog.json`.
 
-### Run
-
-Install/update dependencies in the plant-model service:
+Locally generate six original forms and an explicit reference graph:
 
 ```bash
 cd services/plant-model-service
-python -m pip install -e '.[dev]'
+python -m pip install -e '.[dev,ocr,vision]'
+python scripts/generate_pid_corpus.py
+```
+
+Generated inputs (gitignored):
+- `baseline.pdf`: clean born-digital PDF with linework and native text.
+- `complex.pdf`: vectors, signal lines crossing process lines without a junction.
+- `multisheet.pdf`: two-page drawing.
+- `scanned.pdf`: image-only PDF (no native PDF text).
+- `raster.png`: lossless raster.
+- `compressed.jpg`: lossy raster.
+- `expected_graph.json`: manually defined synthetic ground truth (not an inference input).
+
+The catalog additionally points to DEXPI public example cases, DLR PID2Graph
+(GraphML), Digitize-PID (YOLO) and PIDQA (graph question answering). These
+external datasets are **not downloaded or bundled**, because their drawing-level
+license and commercial reuse terms vary.
+
+## 2. End-to-end pipeline status
+
+```text
+Local PDF / PNG / JPG upload
+   ↓ normalize to private source PDF + SHA-256 + coordinate conversion
+PDF text & bounding boxes ────────→ Optional local Tesseract OCR
+   ↓                                       ↓
+PDF vector primitive extraction      Raster OpenCV contours/Hough lines
+   └───────────────────┬───────────────────┘
+                       ↓
+            Source-linked tag candidates
+                       ↓
+       Geometric symbol hypotheses (circle, rect, bow-tie triangles)
+                       ↓
+        One-segment adjacency proposals with source-stroke IDs
+                       ↓
+             Engineering review, including process direction
+                       ↓
+  Reviewed-tag / explicitly approved-edge Digital BDEP PlantModel draft
+                       ↓
+      Future: approved engineering baseline + DEXPI interchange
+```
+
+**Implemented:** Input normalization, vector text, optional local OCR,
+vector and raster geometry heuristics, candidate symbol tagging,
+conservative single-stroke topology proposals, source highlighting, persisted
+tag/link review and export of explicitly approved process connections into a
+schema-valid draft PlantModel. This is a real staged workflow but *not* robust
+industrial P&ID understanding.
+
+**Not implemented:** Trained symbol model, native DWG/DXF parsing, DEXPI 2.0
+import, vector line networks across junctions, off-page connector matching,
+automatic signal-versus-process line classification, advanced topology checks
+or publication into the approved plant baseline.
+
+**Design rule:** Never convert geometric proximity or OCR confidence into an
+approved instrument/pipeline relationship without engineering review.
+Crossings are not automatically junctions. Unverified line direction is never
+assumed to be process flow direction.
+
+## 3. How to run
+
+```bash
+cd services/plant-model-service
+python -m pip install -e '.[dev,ocr,vision]'
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open **http://127.0.0.1:8000/pid-digitization** for upload and engineering
-review. Existing Digital BDEP remains at `/engineering`.
+Tesseract binary must be installed separately and available on PATH for OCR.
+If optional packages/binary are absent, the relevant stage gives a warning
+instead of silently manufacturing results.
+
+Open **http://127.0.0.1:8000/pid-digitization**.
+
+The user:
+1. Uploads PDF, PNG or JPEG. Chooses local OCR when scanning/raster input.
+2. Reviews extracted text tag candidates against the original page.
+3. Reviews source-highlighted geometry-based connection suggestions.
+4. Explicitly selects accepted/rejected and approved process direction.
+5. Opens the Digital BDEP `PlantModel` draft and evidence references.
 
 API endpoints:
 
-| Method | Endpoint | Usage |
+| Method | Endpoint | Purpose |
 | --- | --- | --- |
-| POST | `/api/pid-digitization/imports` | Multipart `file` containing PDF |
-| GET | `/api/pid-digitization/imports/{id}` | Extraction/review JSON |
-| POST | `/api/pid-digitization/imports/{id}/review` | Reviewer and decisions |
+| POST | `/api/pid-digitization/imports?ocr=true` | Multipart upload; typed source normalization |
+| GET | `/api/pid-digitization/imports/{id}` | Source, normalized stages, tags, geometry |
+| GET | `/api/pid-digitization/imports/{id}/evidence` | Machine-readable source evidence, symbol/link hypotheses |
 | GET | `/api/pid-digitization/imports/{id}/pages/{page}.png` | Source page preview |
-| GET | `/api/pid-digitization/imports/{id}/plant-draft` | Non-publishable PlantModel draft |
+| POST | `/api/pid-digitization/imports/{id}/review` | Human review of tag candidates |
+| POST | `/api/pid-digitization/imports/{id}/connections/review` | Human review of line proposals and direction |
+| GET | `/api/pid-digitization/imports/{id}/plant-draft` | Reviewed PlantModel draft, publish_ready=false |
 
-Example review body:
+Example connection-review request:
 
 ```json
 {
-  "reviewer": "instrument-engineer-01",
+  "reviewer": "process-engineer-1",
   "decisions": [
-    {"candidate_id": "<id returned from import>", "decision": "accepted"}
+    {"proposal_id": "<id from import>", "decision": "accepted", "direction": "a_to_b"}
   ]
 }
 ```
 
-Environment:
+The directed edge is inserted only if both tag identities were already accepted
+and the proposal was classified as an eligible process-line connection.
+Instrument tap candidates are recorded as evidence but require additional
+typed-port engineering rules before graph publication.
 
-- `DATABASE_URL`: same database as the existing BDEP app.
-- `BDEP_PID_STORAGE`: local directory for uploaded PDF bytes
-  (default `./pid_documents`, gitignored).
+## 4. Evidence contract
 
-Run tests: `pytest -q tests/test_pid_digitization*.py`.
+Every tag has `id`, canonical `tag`, `page`, original `bbox` (PDF
+points, top-left origin), `source_text`, `source_method`, `review_status`.
+Each image-origin import retains original file SHA-256 and pixel-to-PDF
+transform, while the normalized PDF has its own SHA-256.
 
-## Explicit scope limits
+Each source-derived connection carries `tag_a`, `tag_b`,
+`source_segment_ids`, `source_bbox`, `page`, `direction`,
+`review_status` and (once approved) reviewer details.
 
-This is **not** yet a Novek-equivalent P&ID reconstruction engine.
-It deliberately **does not**:
+Source evidence is preserved in the import record. The exported draft contains
+`edge_source_evidence` keyed to the resulting PlantModel connection IDs.
 
-- OCR raster-only/scanned PDF pages.
-- Recognize graphic equipment symbols, drawing legends, or off-page connectors.
-- Infer physical pipe/valve connectivity from vector lines.
-- Match data across P&IDs, datasheets or line lists.
-- Automatically update the approved plant baseline or issue deliverables.
+## 5. Benchmark plan
 
-Tag candidates are not automatically trusted. Their engineering classification
-may require correction; unsupported tag types are exposed as `unmapped`.
-Even accepted tags cannot be published because connectivity and attributes
-remain unverified.
+Assess each dataset separately:
+- OCR tag accuracy/recall, including duplicate-tag handling.
+- Symbol precision/recall by discipline and input modality.
+- Connection proposal precision/recall versus verified ground truth.
+- False-junction rates at crossings and off-page connectors.
+- Source-page and bounding-box provenance completeness.
+- Engineer correction effort per sheet, and final graph validity.
 
-## Next engineering increments
+Use synthetic fixtures for deterministic regressions and reserve external
+real-drawing datasets as independent tests. Partition by original drawing
+rather than patches to prevent train/test leakage.
 
-1. Add OCR for raster pages with retained pixel-to-PDF source coordinates.
-2. Train/configure symbol and legend recognition by P&ID standard.
-3. Develop vector-line tracing and continuation/off-page connector matching.
-4. Add a relation-review screen, then represent verified ports and connections.
-5. Reconcile duplicate tags and contradictions across multi-sheet packages.
-6. Link verified imported `PlantModel` entities to revision control and
-   engineering-source provenance; add change-impact analysis.
-7. Only then enable downstream process calculations and instrument sizing.
+Run smoke tests (full updated application still requires CI):
 
-## Production gates
+```bash
+pytest -q tests/test_pid_digitization.py \
+  tests/test_pid_digitization_api.py tests/test_pid_full_pipeline.py
+```
 
-This prototype follows the existing BDEP demo's access model; **do not upload
-confidential plant drawings to an internet-facing instance** until company SSO,
-project authorization/tenant segregation, rate limits, antivirus/sandboxing,
-encryption, retention/deletion policies, audit controls, and formal database
-migrations have been implemented. The demo database auto-creates its table;
-production PostgreSQL needs a reviewed Alembic migration.
+## 6. Deployment and licensing gates
+
+This module inherits the current BDEP prototype's demo access model. **Never
+upload confidential company drawings to a public or shared BDEP instance.**
+Before production add SSO, project-level access controls, storage encryption,
+malware protection, safe parsing/rate limits, audit and retention controls,
+Alembic migrations for the new import table and workload limits.
+
+Do not automatically redistribute/download third-party sources without
+per-drawing license checks. In particular, a common Digitize-PID derivative
+is labelled research-only; pyDEXPI is AGPL-3.0 (commercial licensing check
+needed before embedding in a proprietary product).
+
+The next focused milestone is trained symbol detection + polyline network
+tracing with manually confirmed multi-sheet graph links, then controlled
+publishing into the BDEP revision baseline.
