@@ -117,14 +117,11 @@ def preflight_pdf(content: bytes, filename: str) -> dict[str, Any]:
             all_text = _text(page)
             # Right-side 28% captures common title blocks including Pāhala's
             # right-edge drawing number, without guessing company standards.
-            title_text = _text(page.get_textpage(clip=fitz.Rect(
-                rect.x0+rect.width*.70, rect.y0+rect.height*.40,
-                rect.x1, rect.y1
-            ))) if False else " ".join(page.get_text(
-                "text", clip=fitz.Rect(
-                    rect.x0+rect.width*.70, rect.y0+rect.height*.40,
-                    rect.x1, rect.y1
-                )
+            title_text = " ".join(page.get_text(
+                "text",
+                clip=fitz.Rect(rect.x0 + rect.width * .70,
+                               rect.y0 + rect.height * .40,
+                               rect.x1, rect.y1)
             ).split())
             role, reasons = _page_role(all_text, title_text, number)
             ids = sorted(set(x.upper().replace(" ", "-")
