@@ -52,28 +52,49 @@ def extract_vector_evidence(pdf: bytes) -> dict[str, list]:
             for dnum, d in enumerate(drawings[:MAX_DRAWINGS_PER_PAGE]):
                 rect = d.get("rect")
                 commands = d.get("items", [])
-                cmd_names = [c[0] for c in commands]
                 if rect is None:
                     continue
-                bbox = _roundbox(rect)
-                width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
-                primary = None
-                if len(cmd_names) >= 4 and all(c == "c" for c in cmd_names):
-                    if 8 < width < 220 and .78 <= width / max(height, .01) <= 1.22:
-                        primary = "circle"
-                elif "re" in cmd_names and width > 12 and height > 12:
-                    primary = "rectangle"
-                elif len(cmd_names) in (3, 4) and all(c == "l" for c in cmd_names):
-                    first = commands[0][1]
-                    last = commands[-1][2]
-                    if _length(_point(first), _point(last)) < 3 and 10 < max(width, height) < 105:
-                        primary = "triangle"
-                if primary:
-                    primitives.append({
-                        "id": f"PG{p}-D{dnum}",
-                        "page": p, "type": primary,
-                        "bbox": bbox, "source": "pdf_vector_path",
-                    })
+                # PyMuPDF groups many independent shapes under one draw path.
+                # Interpret individual commands/subpaths, NEVER the entire
+                # path bbox as a symbol (which might cover a whole drawing).
+                for j, cmd in enumerate(commands):
+                    symbol_kind, symbol_box = None, None
+                    if cmd[0] == "re":
+                        local = _roundbox(cmd[1])
+                        if local[2] - local[0] > 12 and local[3] - local[1] > 12:
+                            symbol_kind, symbol_box = "rectangle", local
+                    elif cmd[0] == "c":
+                        if j + 3 < len(commands) and all(
+                            c[0] == "c" for c in commands[j:j + 4]
+                        ) and (j == 0 or commands[j - 1][0] != "c"):
+                            control = [pt for c in commands[j:j + 4] for pt in c[1:]]
+                            xs = [float(pt.x) for pt in control]
+                            ys = [float(pt.y) for pt in control]
+                            local = [round(min(xs), 2), round(min(ys), 2),
+                                     round(max(xs), 2), round(max(ys), 2)]
+                            w, h = local[2] - local[0], local[3] - local[1]
+                            if 8 < w < 220 and .78 <= w / max(h, .01) <= 1.22:
+                                symbol_kind, symbol_box = "circle", local
+                    elif cmd[0] == "l" and j + 2 < len(commands):
+                        triplet = commands[j:j + 3]
+                        if all(c[0] == "l" for c in triplet):
+                            joined = all(
+                                _length(_point(triplet[k][2]), _point(triplet[k+1][1])) < 2
+                                for k in (0, 1)
+                            )
+                            closed = _length(_point(triplet[2][2]), _point(triplet[0][1])) < 2
+                            if joined and closed:
+                                pts = [_point(c[1]) for c in triplet]
+                                xs, ys = [pt[0] for pt in pts], [pt[1] for pt in pts]
+                                local = [min(xs), min(ys), max(xs), max(ys)]
+                                if 10 < max(local[2]-local[0], local[3]-local[1]) < 105:
+                                    symbol_kind, symbol_box = "triangle", local
+                    if symbol_kind:
+                        primitives.append({
+                            "id": f"PG{p}-D{dnum}-S{j}",
+                            "page": p, "type": symbol_kind,
+                            "bbox": symbol_box, "source": "pdf_vector_path",
+                        })
                 for cmd_num, command in enumerate(commands):
                     if command[0] != "l":
                         continue
