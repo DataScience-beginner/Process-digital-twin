@@ -250,5 +250,6 @@ def get_pid_evidence(import_id: str):
             "symbols": row.extraction_json.get("symbol_hypotheses", []),
             "connections": row.extraction_json.get("connection_proposals", []),
             "geometry": row.extraction_json.get("vector_evidence", {}),
+            "network_diagnostics": row.extraction_json.get("network_diagnostics", {}),
             "pipeline": row.extraction_json.get("pipeline", {}),
         }
