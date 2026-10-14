@@ -5,7 +5,9 @@ require authorized isolation/SSO before confidential P&IDs can be uploaded.
 """
 from __future__ import annotations
 
+import io
 import os
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -171,6 +173,54 @@ async def create_client_batch(
             child.unlink(missing_ok=True)
         folder.rmdir()
         raise
+
+
+@router.post("/api/pid-digitization/client-batches/zip")
+async def create_client_batch_from_zip(
+    archive: UploadFile = File(...),
+    client_label: str = Form(..., min_length=2, max_length=120),
+    package_label: str = Form(..., min_length=2, max_length=160),
+):
+    """Expand permission-cleared client ZIPs safely without extracting paths."""
+    if not (archive.filename or "").lower().endswith(".zip"):
+        raise HTTPException(415, detail="Provide a ZIP archive")
+    try:
+        packed = await archive.read(MAX_PACKAGE_BYTES + 1)
+    finally:
+        await archive.close()
+    if len(packed) > MAX_PACKAGE_BYTES:
+        raise HTTPException(413, detail="ZIP upload exceeds 70 MB")
+    uploads = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(packed)) as z:
+            members = [
+                item for item in z.infolist()
+                if not item.is_dir() and item.filename.lower().endswith(".pdf")
+            ]
+            if not 1 <= len(members) <= MAX_PACKAGE_FILES:
+                raise HTTPException(422, detail="ZIP needs 1–12 PDF files")
+            if sum(item.file_size for item in members) > MAX_PACKAGE_BYTES:
+                raise HTTPException(413, detail="Uncompressed ZIP exceeds 70 MB")
+            for info in members:
+                if info.file_size > MAX_DOCUMENT_BYTES:
+                    raise HTTPException(413, detail="PDF inside ZIP exceeds 20 MB")
+                if info.flag_bits & 1:
+                    raise HTTPException(422, detail="Encrypted ZIP files not supported")
+                if info.file_size > 0 and info.compress_size < max(1, info.file_size // 250):
+                    raise HTTPException(422, detail="Excessive ZIP compression ratio")
+                # Never extract paths from the ZIP; only validated in-memory PDFs.
+                filename = Path(info.filename.replace("\\", "/")).name
+                if not filename or filename.startswith("."):
+                    raise HTTPException(422, detail="Unsafe ZIP document filename")
+                payload = z.read(info)
+                if len(payload) != info.file_size or not payload.startswith(b"%PDF-"):
+                    raise HTTPException(422, detail="ZIP entry is not a valid PDF")
+                uploads.append(UploadFile(filename=filename, file=io.BytesIO(payload)))
+    except (zipfile.BadZipFile, RuntimeError, EOFError) as exc:
+        raise HTTPException(422, detail="Invalid or unreadable ZIP archive") from exc
+    return await create_client_batch(
+        files=uploads, client_label=client_label, package_label=package_label,
+    )
 
 
 @router.get("/api/pid-digitization/client-batches/{batch_id}")
