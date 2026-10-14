@@ -85,13 +85,21 @@ jobs:
       - name: Download real legend + P&ID drawing sets and inspect each sheet
         id: collect
         continue-on-error: true
-        run: python -m scripts.collect_public_pid_sets --out /tmp/public_client_pid_sets --analyze-one
+        run: python -m scripts.collect_public_pid_sets --out /tmp/public_client_pid_sets --save-originals --analyze-one
+      - name: Client intake end-to-end test on real Pahala 25-sheet package
+        if: steps.collect.outcome == 'success'
+        run: |
+          python -m scripts.pilot_public_client_package \
+            --source /tmp/public_client_pid_sets/Pahala_WWTP_25_sheet_PIDs_with_3_legends.pdf \
+            --out /tmp/public_client_pid_sets
       - name: Upload source-cited inventory only (no copyrighted PDFs)
         if: steps.collect.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: public-client-pid-sheet-inventory
-          path: /tmp/public_client_pid_sets/public_pid_intake_report.json
+          path: |
+            /tmp/public_client_pid_sets/public_pid_intake_report.json
+            /tmp/public_client_pid_sets/public_client_e2e_report.json
           if-no-files-found: error
       - name: Report external source availability
         if: steps.collect.outcome == 'failure'
