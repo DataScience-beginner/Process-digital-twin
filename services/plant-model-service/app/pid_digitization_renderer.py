@@ -21,10 +21,10 @@ button:focus,input:focus,select:focus{outline:2px solid #297bb3}#entries{flex:1;
 <form id="upload"><input type="file" id="pdf" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required><label><input type="checkbox" id="ocr"> Local OCR for scanned pages</label><button>Extract evidence</button></form>
 <p class="muted">Supports PDF, PNG and JPG. Optional local Tesseract OCR. Vector symbol and direct-line graph proposals require engineering verification; no unreviewed data is published.</p>
 <p id="state" role="status"></p></section>
-<section class="card" id="review" hidden><h2>2. Verify source tag identities</h2>
+<section class="card" id="review" hidden><h2>2. Independently verify tags and visual symbols</h2>
 <div class="row"><label>Page <select id="page"></select></label>
 <label>Reviewer ID <input id="reviewer" type="text" placeholder="Engineer ID"></label>
-<button id="save" type="button">Save page review</button><button id="draft" type="button">Export plant draft</button></div>
+<button id="save" type="button">Save tag review</button><button id="saveSymbols" type="button">Save symbol review</button><button id="draft" type="button">Export plant draft</button><button id="annotations" type="button">View verified training labels</button></div>
 <p id="summary" class="muted"></p><div class="row"><div id="entries"></div>
 <div id="source"><img id="pageImage" alt="Original engineering drawing page"><div id="mark"></div><svg id="routeOverlay" aria-hidden="true"></svg></div></div>
 <h2>3. Review proposed process connections</h2><p class="muted">Geometric hypotheses only. Accept only after verifying source stroke, endpoints and process direction.</p>
@@ -50,9 +50,16 @@ el('mark').style.display='none';el('routeOverlay').style.display='none';var entr
 var subset=data.candidates.filter(function(c){return c.page===Number(n)});
 subset.forEach(function(c){var row=document.createElement('div');row.className='entry';
 var btn=document.createElement('button');btn.type='button';btn.textContent=c.tag;btn.onclick=function(){highlight(c)};
-var select=document.createElement('select');select.dataset.id=c.id;
+var select=document.createElement('select');select.dataset.id=c.id;select.className='tag-status';
 ['unreviewed','accepted','rejected'].forEach(function(status){select.add(new Option(status,status))});
-select.value=c.review_status;row.append(btn,select);entries.append(row)});
+select.value=c.review_status;row.append(btn,select);
+var symbol=(data.symbol_hypotheses||[]).find(function(s){return s.tag_id===c.id});
+if(symbol&&symbol.geometry_id){
+var name=document.createElement('span');name.className='muted';name.textContent=symbol.visual_geometry||'shape?';
+var checked=document.createElement('select');checked.className='symbol-status';checked.dataset.id=c.id;
+['unreviewed','accepted','rejected'].forEach(function(status){checked.add(new Option('Shape '+status,status))});
+checked.value=symbol.review_status;row.append(name,checked)}
+entries.append(row)});
 if(!subset.length)entries.textContent='No detected tags on this page.';showLinks(Number(n))}
 function display(){el('review').hidden=false;el('summary').textContent=data.candidates.length+' candidate mentions, '+(data.symbol_hypotheses||[]).filter(function(s){return s.geometry_id}).length+' visual matches, '+(data.connection_proposals||[]).length+' unverified connection proposals, '+data.page_count+' pages. '+data.warnings.join(' ');
 var p=el('page');var current=p.value;p.replaceChildren();data.pages.forEach(function(page){p.add(new Option('Page '+page.page,page.page))});p.value=current&&data.pages.some(function(x){return String(x.page)===current})?current:'1';showPage(p.value)}
@@ -60,7 +67,7 @@ el('upload').onsubmit=async function(event){event.preventDefault();message('Extr
 var fd=new FormData();fd.append('file',files[0]);try{data=await api('/api/pid-digitization/imports?ocr='+el('ocr').checked,{method:'POST',body:fd});message('Import saved: '+data.id);display()}catch(e){message(e.message)}};
 el('page').onchange=function(){showPage(el('page').value)};
 el('save').onclick=async function(){var reviewer=el('reviewer').value.trim();if(reviewer.length<2){message('Provide reviewer ID');return}
-var decisions=Array.from(el('entries').querySelectorAll('select')).map(function(s){return {candidate_id:s.dataset.id,decision:s.value}});
+var decisions=Array.from(el('entries').querySelectorAll('.tag-status')).map(function(s){return {candidate_id:s.dataset.id,decision:s.value}});
 if(!decisions.length)return;try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Review saved.');display()}catch(e){message(e.message)}};
 function showLinks(page){var area=el('connections');area.replaceChildren();
 var links=(data.connection_proposals||[]).filter(function(edge){return edge.page===page});
@@ -76,6 +83,11 @@ el('saveLinks').onclick=async function(){var reviewer=el('reviewer').value.trim(
 var decisions=Array.from(el('connections').querySelectorAll('.edge-status')).map(function(status){return {proposal_id:status.dataset.id,decision:status.value,direction:status.parentElement.querySelector('.edge-direction').value}});
 if(!decisions.length){message('No connection proposals on this page');return}
 try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/connections/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Connection review saved.');display()}catch(e){message(e.message)}};
+el('saveSymbols').onclick=async function(){var reviewer=el('reviewer').value.trim();if(reviewer.length<2){message('Provide reviewer ID');return}
+var decisions=Array.from(el('entries').querySelectorAll('.symbol-status')).map(function(s){return {tag_candidate_id:s.dataset.id,decision:s.value}});
+if(!decisions.length){message('No visual symbol matches on this page');return}
+try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/symbols/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Separate visual-symbol review saved.');display()}catch(e){message(e.message)}};
+el('annotations').onclick=async function(){try{var result=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/annotations');el('result').textContent=JSON.stringify(result,null,2)}catch(e){message(e.message)}};
 el('draft').onclick=async function(){try{var draft=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/plant-draft');el('result').textContent=JSON.stringify(draft,null,2)}catch(e){message(e.message)}};
 })();
 </script></body></html>"""
