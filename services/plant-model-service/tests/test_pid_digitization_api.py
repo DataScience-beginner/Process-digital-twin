@@ -10,9 +10,20 @@ from app import pid_digitization_api as pid
 
 
 def _pdf_bytes():
+    """Include actual vector symbols: tag text alone cannot certify a shape."""
     document = fitz.open()
-    page = document.new_page()
-    page.insert_text((72, 72), "P-101 FCV-101 PSV-101")
+    page = document.new_page(width=760, height=360)
+    shape = page.new_shape()
+    shape.draw_rect(fitz.Rect(55, 70, 150, 210))
+    shape.draw_circle(fitz.Point(300, 140), 30)
+    shape.draw_polyline([(420, 115), (445, 140), (420, 165), (420, 115)])
+    shape.draw_polyline([(470, 115), (445, 140), (470, 165), (470, 115)])
+    shape.finish(color=(0, 0, 0), width=1.5)
+    shape.commit()
+    page.insert_text((75, 102), "V-101")
+    page.insert_text((281, 198), "P-101")
+    page.insert_text((419, 92), "FCV-101")
+    page.insert_text((542, 150), "PSV-101")
     data = document.tobytes()
     document.close()
     return data
