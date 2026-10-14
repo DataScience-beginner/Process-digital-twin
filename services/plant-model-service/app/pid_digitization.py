@@ -119,7 +119,7 @@ def extract_pid_pdf(content: bytes) -> dict[str, Any]:
                     break
             if not words:
                 warnings.append(
-                    f"Page {page_index + 1} has no extractable text; scanned-page OCR is not implemented"
+                    f"Page {page_index + 1} has no extractable text; enable local OCR stage to extract text"
                 )
             pages.append({
                 "page": page_index + 1,
@@ -144,10 +144,14 @@ def extract_pid_pdf(content: bytes) -> dict[str, Any]:
         doc.close()
 
 
-def accepted_plant_draft(import_id: str, project_id: str, candidates: list[dict]) -> dict:
-    """Map reviewed tag identities into a disconnected draft PlantModel.
+def accepted_plant_draft(
+    import_id: str, project_id: str, candidates: list[dict],
+    reviewed_links: list[dict] | None = None,
+) -> dict:
+    """Map reviewed tags and explicitly engineer-approved links into PlantModel.
 
-    The draft is NEVER publication-ready until real connections/properties are verified.
+    Connection direction must be explicitly checked; no unreviewed topology
+    enters this draft. The draft is never automatically publishable.
     """
     by_tag: dict[str, list[dict]] = {}
     for candidate in candidates:
@@ -177,19 +181,63 @@ def accepted_plant_draft(import_id: str, project_id: str, candidates: list[dict]
                 "source_import_id": import_id,
                 "source_page": mentions[0]["page"],
                 "source_mentions": len(mentions),
+                "source_candidate_id": mentions[0]["id"],
+                "source_bbox_pdf": ",".join(map(str, mentions[0]["bbox"])),
                 "verification": "tag_only_reviewed",
             },
+        })
+    object_by_tag = {obj["tag"]: obj for obj in objects}
+    connections: list[dict] = []
+    edge_sources: list[dict] = []
+    skipped: list[str] = []
+    for edge in (reviewed_links or []):
+        if edge.get("review_status") != "accepted":
+            continue
+        a, b = edge.get("tag_a"), edge.get("tag_b")
+        direction = edge.get("direction", "unverified")
+        if a not in object_by_tag or b not in object_by_tag or a == b:
+            skipped.append(f'{edge.get("id")}: endpoint missing/unreviewed')
+            continue
+        if direction not in ("a_to_b", "b_to_a"):
+            skipped.append(f'{edge.get("id")}: direction not approved')
+            continue
+        src, dst = (a, b) if direction == "a_to_b" else (b, a)
+        src_obj, dst_obj = object_by_tag[src], object_by_tag[dst]
+        c_id = f'PID-CONN-{edge["id"]}'
+        source_port, target_port = f'from-{edge["id"]}', f'to-{edge["id"]}'
+        src_obj["ports"].append({
+            "name": source_port, "kind": "process", "direction": "bidirectional"
+        })
+        dst_obj["ports"].append({
+            "name": target_port, "kind": "process", "direction": "bidirectional"
+        })
+        connections.append({
+            "id": c_id, "kind": "process",
+            "source": {"object_id": src_obj["id"], "port": source_port},
+            "target": {"object_id": dst_obj["id"], "port": target_port},
+            "service": "PDF-traced process candidate, human-reviewed",
+            "logical_line": None,
+        })
+        edge_sources.append({
+            "connection_id": c_id,
+            "proposal_id": edge["id"],
+            "page": edge["page"],
+            "source_segment_ids": edge.get("source_segment_ids", []),
+            "source_bbox": edge.get("source_bbox"),
+            "reviewed_by": edge.get("reviewed_by"),
         })
     return {
         "plant_model": {
             "project_id": project_id,
             "objects": objects,
-            "connections": [],
+            "connections": connections,
             "associations": [],
             "modules": [],
         },
+        "edge_source_evidence": edge_sources,
         "unmapped_accepted_tags": unmapped,
-        "topology_status": "not_reconstructed",
+        "skipped_links": skipped,
+        "topology_status": "partially_verified" if connections else "not_reconstructed",
         "publish_ready": False,
-        "reason": "Only tag identities verified; physical connectivity and properties remain unverified",
+        "reason": "Partial source-grounded reconstruction; engineering completeness, line identities, off-sheet links and design-basis reconciliation remain open",
     }
