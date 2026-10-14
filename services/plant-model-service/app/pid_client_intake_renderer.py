@@ -38,6 +38,7 @@ project access rules, encryption and secure storage are not yet implemented.</p>
 <p class="muted">Check every sheet classification. Legend pages build a source-cited
 engineering vocabulary; text next to a symbol does not verify the geometry.</p>
 <div id="documents"></div></section>
+<section class="box" id="legendLibrary" hidden><h2>Project legend symbol examples (human verification)</h2><p class="muted">Each example is a source-linked label and tentative left-side graphic crop. Many crops will be inaccurate. Inspect before accepting; accepted examples are not automatically applied to process drawings.</p><div id="legendItems"></div><div class="flex"><button id="saveLegend" type="button">Save inspected legend examples</button></div><img id="legendImage" class="preview" alt="Source-legend proposed symbol crop" hidden></section>
 <section class="box" id="viewer" hidden>
 <h2>Source-page inspection</h2>
 <p id="chosen"></p><img id="preview" class="preview" alt="Original client P&ID sheet">
@@ -74,7 +75,34 @@ var title=document.createElement('span');title.className='muted';
 title.textContent=(p.drawing_numbers||[]).join(' ')+(p.role_review_status==='accepted'?' · reviewed':' · needs role verification');
 row.append(btn,role,title);root.append(row)})
 });
-readiness()}
+readiness();showLegends()}
+function showLegends(){var area=el('legendItems');area.replaceChildren();var count=0;
+state.documents.forEach(function(doc){(doc.preflight.legend_terms||[]).forEach(function(item){
+if(count>=80)return;count++;
+var row=document.createElement('div');row.className='page';
+var btn=document.createElement('button');btn.type='button';
+btn.textContent='Inspect '+item.label+' (sheet '+item.page+')';
+btn.onclick=function(){
+el('legendImage').hidden=false;
+el('legendImage').src='/api/pid-digitization/client-batches/'+state.id+
+'/documents/'+doc.id+'/legends/'+item.id+'.png'};
+var selector=document.createElement('select');selector.className='legend-role';
+selector.dataset.doc=doc.id;selector.dataset.id=item.id;
+['unreviewed','accepted','rejected'].forEach(function(v){selector.add(new Option(v,v))});
+selector.value=item.review_status;
+row.append(btn,selector);area.append(row)})});
+el('legendLibrary').hidden=(count===0);
+}
+el('saveLegend').onclick=async function(){var reviewer=el('reviewer').value.trim();
+if(reviewer.length<2){msg('Provide reviewer ID');return}
+var decisions=Array.from(el('legendItems').querySelectorAll('.legend-role')).map(function(s){
+return {document_id:s.dataset.doc,legend_term_id:s.dataset.id,decision:s.value}});
+try{var result=await call('/api/pid-digitization/client-batches/'+state.id+'/legends/review',{
+method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({reviewer:reviewer,decisions:decisions})});
+state=await call('/api/pid-digitization/client-batches/'+state.id);
+msg('Verified '+result.accepted_legend_examples+' proposed legend examples. This is training reference, not automatic symbol detection.');
+show()}catch(e){msg(e.message)}};
 async function readiness(){
 try{var s=await call('/api/pid-digitization/client-batches/'+state.id+'/readiness');
 el('readiness').textContent='Legend pages approved: '+s.legend_sheets_approved.length+
