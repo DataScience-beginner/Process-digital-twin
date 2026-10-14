@@ -97,3 +97,20 @@ def test_scanned_pdf_ocr_option(corpus):
     )
     assert output["pipeline"]["ocr"] == "attempted"
     assert output["candidates"], "OCR should identify at least one synthetic tag"
+    assert any(c["source_method"] == "local_tesseract_ocr" for c in output["candidates"])
+
+
+@pytest.mark.skipif(
+    shutil.which("tesseract") is None, reason="local tesseract not installed"
+)
+def test_scanned_symbol_geometry_and_sourced_connections(corpus):
+    pytest.importorskip("pytesseract")
+    pytest.importorskip("cv2")
+    _, scan = build_pid_extraction(
+        (corpus / "scanned.pdf").read_bytes(), "scanned.pdf", ocr=True
+    )
+    found = {s["tag"] for s in scan["symbol_hypotheses"] if s["geometry_id"]}
+    assert {"V-101", "P-101", "FCV-101"} <= found
+    assert any(seg["source"] == "opencv_houghline_unverified"
+               for seg in scan["vector_evidence"]["segments"])
+    assert scan["pipeline"]["digital_plant"] == "draft_only"
