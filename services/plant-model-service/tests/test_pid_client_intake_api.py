@@ -116,6 +116,20 @@ def test_client_package_workflow_requires_approved_legend_before_extraction(monk
     assert doc_result.json()["candidates"]
     assert all(e["review_status"]=="unreviewed"
                for e in doc_result.json()["connection_proposals"])
+    # Client batch-level digitization must persist source import identifiers,
+    # and retrying the same package should not silently create new versions.
+    bulk=client.post(
+        f"/api/pid-digitization/client-batches/{batch_id}/analyze-approved?limit=10"
+    )
+    assert bulk.status_code==200,bulk.text
+    assert bulk.json()["processed"]==1
+    assert bulk.json()["results"][0]["publish_ready"] is False
+    retry=client.post(
+        f"/api/pid-digitization/client-batches/{batch_id}/analyze-approved?limit=10"
+    )
+    assert retry.status_code==200
+    assert retry.json()["results"][0]["reused"] is True
+    assert retry.json()["results"][0]["import_id"]==bulk.json()["results"][0]["import_id"]
 
 
 def test_unknown_sheet_and_disguised_non_pdf_are_rejected(monkeypatch,tmp_path):
