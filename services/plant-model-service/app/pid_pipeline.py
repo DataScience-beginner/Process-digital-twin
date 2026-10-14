@@ -163,7 +163,7 @@ def build_pid_extraction(
         "warnings": vector["warnings"] + raster["warnings"],
     }
     symbols = detect_symbol_hypotheses(extracted["candidates"], geometry["primitives"])
-    unresolved_tees = propose_unresolved_tees(geometry["segments"], extracted["document_sha256"])
+    unresolved_tees = propose_unresolved_tees(geometry["segments"], extracted["document_sha256"], symbols)
     network = reviewed_network(symbols, geometry["segments"], unresolved_tees, extracted["document_sha256"])
     links = network["connection_proposals"]
     extracted["symbol_hypotheses"] = symbols
