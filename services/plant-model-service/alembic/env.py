@@ -7,6 +7,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db_schema import Base
+from app.pid_digitization_api import PidImportRow  # noqa: F401; register import table
 
 config = context.config
 

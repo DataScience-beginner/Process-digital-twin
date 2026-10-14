@@ -59,6 +59,7 @@ from .revision_control_renderer import (
     render_revision_control_html,
 )
 from .revision_models import EngineeringReviewAction
+from .pid_digitization_api import router as pid_digitization_router
 from .publishing import (
     PublishStage,
     PublicationBlocked,
@@ -68,6 +69,7 @@ from .publishing import (
 )
 
 app = FastAPI(title="Digital BDEP Prototype", version="0.9.0")
+app.include_router(pid_digitization_router)
 
 
 def _compile_case(design_case_id: str = "CASE-NORMAL"):
