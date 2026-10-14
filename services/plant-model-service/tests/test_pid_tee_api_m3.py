@@ -66,7 +66,7 @@ def test_engineer_review_tee_resets_approved_process_routes(tmp_path,monkeypatch
     assert any(e["review_status"]=="accepted"
                for e in approve.json()["connection_proposals"])
 
-    tee=body["unresolved_tees"][0]
+    tee=next(t for t in body["unresolved_tees"] if abs(t["point"][0]-230)<3 and abs(t["point"][1]-110)<3)
     reviewed=client.post(f"/api/pid-digitization/imports/{import_id}/tees/review",
                          json={"reviewer":"engineer-test","decisions":[
                              {"proposal_id":tee["id"],"decision":"accepted"}
