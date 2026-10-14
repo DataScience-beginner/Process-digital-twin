@@ -77,6 +77,6 @@ def test_engineer_review_tee_resets_approved_process_routes(tmp_path,monkeypatch
     assert all(e["review_status"]=="unreviewed"
                for e in new["connection_proposals"])
     assert new["review_history"][-1]["previously_approved_routes_invalidated"]>=1
-    assert any(e["approved_tee_ids"] for e in new["connection_proposals"])
+    assert any(e["approved_tee_ids"] for e in new["connection_proposals"]), {"tees": new["unresolved_tees"], "decisions":new["junction_decisions"], "route_proposals":new["connection_proposals"], "symbols":new["symbol_hypotheses"]}
     assert client.get(f"/api/pid-digitization/imports/{import_id}/plant-draft").json()[
         "plant_model"]["connections"]==[]
