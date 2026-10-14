@@ -114,6 +114,7 @@ def extract_vector_evidence(pdf: bytes) -> dict[str, list]:
                                  max(a[0], b[0]), max(a[1], b[1])],
                         "length": round(length, 2),
                         "source": "pdf_vector_path",
+                        "stroke_style": ("dashed" if (str(d.get("dashes", "")).strip() not in ("", "[] 0", "[]0")) else "solid"),
                     })
             if len(segments) >= MAX_SEGMENTS_PER_PAGE:
                 warnings.append(f"Vector segment limit reached on page {p}")
