@@ -2,7 +2,7 @@ name: P&ID Digitization OCR and Vision Tests
 
 on:
   pull_request:
-    branches: [feature/digital-bdep-foundation, feature/pid-digitization-mvp, main]
+    branches: [feature/digital-bdep-foundation, feature/pid-digitization-mvp, feature/pid-topology-graph-m2, main]
     paths:
       - 'services/plant-model-service/**'
       - '.github/workflows/pid-digitization-vision-ci.yml'
