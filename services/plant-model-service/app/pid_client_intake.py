@@ -63,10 +63,12 @@ def _page_role(text: str, title_area: str, index: int) -> tuple[str, list[str]]:
         return "pid", ["P&ID title block"]
     # Some client drawing title blocks list only sheet number P-123.
     number = _DRAWING_NUM.search(title)
-    if number and "LEGEND" not in title and (
-        "P&ID" in upper or "PROCESS" in upper or "SIGNAL" in upper
-    ):
-        return "pid_candidate", ["P-series drawing and process context"]
+    if number and "LEGEND" not in title:
+        return "pid_candidate", ["P-series drawing number, P&ID role requires review"]
+    # Some drawings have a narrow title box; full sheet text can contain
+    # drawing number but role remains only a *candidate* for confirmation.
+    if "DRAWING NUMBER" in upper and _DRAWING_NUM.search(upper):
+        return "pid_candidate", ["P-series number in drawing sheet; review required"]
     if "CIVIL" in title or "SITE PLAN" in title:
         return "context", ["civil/site drawing"]
     if index == 1 and ("PROJECT" in upper or "INDEX" in upper):
