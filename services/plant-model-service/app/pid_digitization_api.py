@@ -16,7 +16,8 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .db_schema import Base, engine_from_url
 from .persistence import PROJECT_ID, ensure_demo_seeded
-from .pid_digitization import MAX_PDF_BYTES, accepted_plant_draft, extract_pid_pdf
+from .pid_digitization import MAX_PDF_BYTES, accepted_plant_draft
+from .pid_pipeline import build_pid_extraction
 from .pid_digitization_renderer import render_pid_digitization_html
 
 
@@ -78,21 +79,32 @@ class ReviewPayload(BaseModel):
     decisions: list[TagDecision] = Field(min_length=1)
 
 
+class ConnectionDecision(BaseModel):
+    proposal_id: str
+    decision: str = Field(pattern="^(accepted|rejected|unreviewed)$")
+    direction: str = Field(default="unverified", pattern="^(unverified|a_to_b|b_to_a)$")
+
+
+class ConnectionReviewPayload(BaseModel):
+    reviewer: str = Field(min_length=2, max_length=120)
+    decisions: list[ConnectionDecision] = Field(min_length=1)
+
+
 @router.post("/api/pid-digitization/imports")
-async def import_pid_pdf(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(415, detail="This MVP supports PDF uploads only")
+async def import_pid_pdf(file: UploadFile = File(...), ocr: bool = False):
+    if not file.filename or not file.filename.lower().endswith((".pdf", ".png", ".jpg", ".jpeg")):
+        raise HTTPException(415, detail="Supported input: PDF, PNG, JPG")
     try:
         contents = await file.read(MAX_PDF_BYTES + 1)
     finally:
         await file.close()
     try:
-        extracted = extract_pid_pdf(contents)
+        normalized, extracted = build_pid_extraction(contents, file.filename, ocr=ocr)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     import_id = f"PID-{uuid4().hex}"
     storage_path = _storage() / f"{import_id}.pdf"
-    storage_path.write_bytes(contents)
+    storage_path.write_bytes(normalized)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         with Session(_database()) as session:
@@ -142,6 +154,10 @@ def review_pid_tags(import_id: str, payload: ReviewPayload):
             },
         ]
         row.extraction_json = extracted
+        for hypothesis in extracted.get("symbol_hypotheses", []):
+            candidate = next((c for c in extracted["candidates"] if c["id"] == hypothesis["tag_id"]), None)
+            if candidate is not None:
+                hypothesis["review_status"] = candidate["review_status"]
         row.state = (
             "tags_reviewed"
             if all(c["review_status"] != "unreviewed" for c in extracted["candidates"])
@@ -156,7 +172,8 @@ def get_pid_plant_draft(import_id: str):
     with Session(_database()) as session:
         row = _load(session, import_id)
         return accepted_plant_draft(
-            row.id, row.project_id, row.extraction_json["candidates"]
+            row.id, row.project_id, row.extraction_json["candidates"],
+            row.extraction_json.get("connection_proposals", []),
         )
 
 
@@ -185,3 +202,53 @@ def get_pid_page_preview(import_id: str, page_number: int):
 @router.get("/pid-digitization", response_class=HTMLResponse)
 def pid_digitization_view():
     return render_pid_digitization_html()
+
+
+@router.post("/api/pid-digitization/imports/{import_id}/connections/review")
+def review_pid_connections(import_id: str, payload: ConnectionReviewPayload):
+    with Session(_database()) as session:
+        row = _load(session, import_id)
+        extracted = dict(row.extraction_json)
+        edges = extracted.get("connection_proposals", [])
+        by_id = {edge["id"]: edge for edge in edges}
+        unknown = {decision.proposal_id for decision in payload.decisions} - set(by_id)
+        if unknown:
+            raise HTTPException(422, detail=f"Unknown connection IDs: {sorted(unknown)}")
+        accepted_tags = {candidate["tag"] for candidate in extracted["candidates"]
+                         if candidate["review_status"] == "accepted"}
+        for decision in payload.decisions:
+            edge = by_id[decision.proposal_id]
+            if decision.decision == "accepted":
+                if decision.direction == "unverified":
+                    raise HTTPException(422, detail="Accepting a process link requires checked direction")
+                if edge["tag_a"] not in accepted_tags or edge["tag_b"] not in accepted_tags:
+                    raise HTTPException(422, detail="Accept both endpoint tags before approving links")
+        now = datetime.now(timezone.utc).isoformat()
+        for decision in payload.decisions:
+            edge = by_id[decision.proposal_id]
+            edge["review_status"] = decision.decision
+            edge["direction"] = decision.direction
+            edge["reviewed_by"] = payload.reviewer
+            edge["reviewed_at"] = now
+        extracted["review_history"] = [
+            *extracted.get("review_history", []),
+            {"reviewed_by": payload.reviewer, "decisions": len(payload.decisions),
+             "stage": "connection_review", "at": now},
+        ]
+        row.extraction_json = extracted
+        row.state = "topology_review_in_progress"
+        session.commit()
+        return _public(row)
+
+
+@router.get("/api/pid-digitization/imports/{import_id}/evidence")
+def get_pid_evidence(import_id: str):
+    with Session(_database()) as session:
+        row = _load(session, import_id)
+        return {
+            "import_id": import_id, "source_sha256": row.sha256,
+            "symbols": row.extraction_json.get("symbol_hypotheses", []),
+            "connections": row.extraction_json.get("connection_proposals", []),
+            "geometry": row.extraction_json.get("vector_evidence", {}),
+            "pipeline": row.extraction_json.get("pipeline", {}),
+        }
