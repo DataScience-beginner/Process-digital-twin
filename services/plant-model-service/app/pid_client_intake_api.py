@@ -6,6 +6,7 @@ require authorized isolation/SSO before confidential P&IDs can be uploaded.
 from __future__ import annotations
 
 import io
+import math
 import os
 import zipfile
 from datetime import datetime, timezone
@@ -56,6 +57,14 @@ class LegendDecision(BaseModel):
     document_id: str
     legend_term_id: str
     decision: str = Field(pattern="^(accepted|rejected|unreviewed)$")
+
+
+class CorrectedLegendCrop(BaseModel):
+    reviewer: str = Field(min_length=2, max_length=120)
+    x0: float
+    y0: float
+    x1: float
+    y1: float
 
 
 class LegendReview(BaseModel):
@@ -410,6 +419,55 @@ def analyze_approved_sheets(batch_id: str, ocr: bool = False, limit: int = 10):
     }
 
 
+@router.post("/api/pid-digitization/client-batches/{batch_id}/documents/{doc_id}/legends/{term_id}/crop")
+def correct_legend_symbol_crop(batch_id: str, doc_id: str, term_id: str,
+                               request: CorrectedLegendCrop):
+    """Engineer corrects original PDF-space symbol bounding box.
+
+    The source text and proposed crop are retained; review is reset to
+    unreviewed until the corrected symbol is explicitly accepted separately.
+    """
+    with Session(_database()) as session:
+        row = _load(session, batch_id)
+        manifest = dict(row.manifest_json)
+        document = next((d for d in manifest["documents"]
+                         if d["id"] == doc_id), None)
+        if not document:
+            raise HTTPException(404, detail="Source drawing missing")
+        sample = next((term for term in document["preflight"]["legend_terms"]
+                       if term["id"] == term_id), None)
+        if not sample:
+            raise HTTPException(404, detail="Source legend example missing")
+        page = document["preflight"]["pages"][sample["page"]-1]
+        if not (page["role"] == "legend" and page["role_review_status"] == "accepted"):
+            raise HTTPException(409, detail="Review legend sheet classification first")
+        numbers = [request.x0, request.y0, request.x1, request.y1]
+        if not all(math.isfinite(n) for n in numbers):
+            raise HTTPException(422, detail="Crop coordinates must be finite")
+        x0,y0,x1,y1 = numbers
+        w,h = page["width_pts"], page["height_pts"]
+        if not (0<=x0<x1<=w and 0<=y0<y1<=h
+                and x1-x0>=4 and y1-y0>=4
+                and (x1-x0)*(y1-y0)<.18*w*h):
+            raise HTTPException(422, detail="Use a bounded, small symbol crop inside source page")
+        stamp=datetime.now(timezone.utc).isoformat()
+        sample["reviewed_symbol_bbox_pdf"] = [round(n,2) for n in numbers]
+        sample["crop_reviewed_by"] = request.reviewer
+        sample["crop_reviewed_at"] = stamp
+        sample["review_status"] = "unreviewed"
+        manifest["review_events"]=[
+            *manifest.get("review_events",[]),
+            {"event":"legend_crop_correction","term_id":term_id,
+             "reviewer":request.reviewer,"timestamp":stamp},
+        ]
+        row.manifest_json=manifest
+        session.commit()
+        return {"source_legend_term":term_id,
+                "reviewed_symbol_bbox_pdf":sample["reviewed_symbol_bbox_pdf"],
+                "review_status":"unreviewed",
+                "requires_separate_symbol_acceptance":True}
+
+
 @router.post("/api/pid-digitization/client-batches/{batch_id}/legends/review")
 def review_client_legend_examples(batch_id: str, review: LegendReview):
     """Approve/reject visual legend examples independently of OCR labels.
@@ -434,8 +492,10 @@ def review_client_legend_examples(batch_id: str, review: LegendReview):
                 role = doc["preflight"]["pages"][legend["page"] - 1]
                 if role["role"] != "legend" or role["role_review_status"] != "accepted":
                     raise HTTPException(409, detail="Source sheet must first be approved as legend")
-                if not legend.get("proposed_symbol_crop_pdf"):
-                    raise HTTPException(422, detail="No traceable visual crop")
+                if not legend.get("reviewed_symbol_bbox_pdf"):
+                    raise HTTPException(
+                        409, detail="Draw and save the actual source symbol bounding box before acceptance"
+                    )
         stamp = datetime.now(timezone.utc).isoformat()
         for decision in review.decisions:
             _, legend = found[(decision.document_id, decision.legend_term_id)]
@@ -471,7 +531,7 @@ def preview_legend_example(batch_id: str, doc_id: str, term_id: str):
             raise HTTPException(404, detail="Legend sample not found")
         if doc["preflight"]["pages"][match["page"] - 1]["role"] != "legend":
             raise HTTPException(409, detail="Source page is not a legend")
-        box = match["proposed_symbol_crop_pdf"]
+        box = match.get("reviewed_symbol_bbox_pdf") or match["proposed_symbol_crop_pdf"]
         page_number = match["page"]
     file_path = _file_path(batch_id, doc_id)
     with fitz.open(file_path) as pdf:
