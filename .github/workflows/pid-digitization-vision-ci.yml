@@ -28,7 +28,7 @@ jobs:
       - name: Test complete P&ID pipeline
         run: pytest -q tests/test_pid_digitization.py tests/test_pid_digitization_api.py tests/test_pid_full_pipeline.py tests/test_pid_topology_m2.py
       - name: Report synthetic P&ID benchmark
-        run: python scripts/benchmark_pid_extraction.py --report /tmp/pid_graph_benchmark.json
+        run: python -m scripts.benchmark_pid_extraction --report /tmp/pid_graph_benchmark.json
       - name: Archive benchmark JSON
         uses: actions/upload-artifact@v4
         with:
