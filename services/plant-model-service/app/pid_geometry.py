@@ -219,12 +219,18 @@ def propose_connections(
             continue
         dedup.add(key)
         proof = f'{document_sha256}:{line["id"]}:{key}'
+        instrument_like = any(
+            token in (s["symbol_type_from_tag"] or "")
+            for s in (a, b)
+            for token in ("transmitter", "indicator", "controller")
+        )
+        link_kind = "instrument_tap_candidate" if instrument_like else "process_candidate"
         result.append({
             "id": "LINK-" + hashlib.sha256(proof.encode()).hexdigest()[:16],
             "tag_a": a["tag"], "tag_b": b["tag"],
             "tag_id_a": a["tag_id"], "tag_id_b": b["tag_id"],
             "page": line["page"], "source_segment_ids": [line["id"]],
-            "source_bbox": line["bbox"], "type": "process_candidate",
+            "source_bbox": line["bbox"], "type": link_kind,
             "direction": "unverified", "review_status": "unreviewed",
             "confidence": "geometric_hypothesis_only",
         })
