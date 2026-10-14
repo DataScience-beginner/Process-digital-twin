@@ -186,6 +186,15 @@ def main() -> None:
         "process_edge_proposals": report["total_process_edge_proposals"],
         "gold": report["gold_label_status"],
         "source_sha256": report["original_sha256"],
+        "per_sheet": [
+            {"page": s["source_page"],
+             "drawing": s["drawing_number_from_official_index"],
+             "native_tags": s["native_tag_candidates"],
+             "ocr_tags": s["ocr_tag_candidates"],
+             "symbol_geometry": s["visual_matches"],
+             "process_edges": s["process_edge_proposals"]}
+            for s in report["per_sheet"]
+        ],
     }, indent=2))
 
 
