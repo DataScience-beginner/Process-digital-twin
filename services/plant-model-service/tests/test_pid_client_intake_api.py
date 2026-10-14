@@ -75,6 +75,22 @@ def test_client_package_workflow_requires_approved_legend_before_extraction(monk
                         json={"reviewer":"Eng-Test","decisions":decisions})
     assert approve.status_code==200,approve.text
     assert approve.json()["readiness"]["readiness"]=="ready_for_pagewise_evidence_extraction"
+    legend_doc=docs[0]
+    sample=legend_doc["preflight"]["legend_terms"][0]
+    crop=client.get(
+        f"/api/pid-digitization/client-batches/{batch_id}/documents/{legend_doc['id']}/legends/{sample['id']}.png"
+    )
+    assert crop.status_code==200
+    assert crop.content.startswith(b"\x89PNG")
+    legend_review=client.post(
+        f"/api/pid-digitization/client-batches/{batch_id}/legends/review",
+        json={"reviewer":"Eng-Test",
+              "decisions":[{"document_id":legend_doc["id"],
+                            "legend_term_id":sample["id"],
+                            "decision":"accepted"}]}
+    )
+    assert legend_review.status_code==200,legend_review.text
+    assert legend_review.json()["accepted_legend_examples"]==1
     image=client.get(
         f"/api/pid-digitization/client-batches/{batch_id}/documents/{pdfdoc}/pages/1.png"
     )
