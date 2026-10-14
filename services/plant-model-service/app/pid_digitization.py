@@ -195,6 +195,9 @@ def accepted_plant_draft(
             continue
         a, b = edge.get("tag_a"), edge.get("tag_b")
         direction = edge.get("direction", "unverified")
+        if edge.get("type") != "process_candidate":
+            skipped.append(f'{edge.get("id")}: instrument/signal edge requires typed-port review')
+            continue
         if a not in object_by_tag or b not in object_by_tag or a == b:
             skipped.append(f'{edge.get("id")}: endpoint missing/unreviewed')
             continue
