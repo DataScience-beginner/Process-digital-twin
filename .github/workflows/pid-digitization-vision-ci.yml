@@ -85,7 +85,7 @@ jobs:
       - name: Download real legend + P&ID drawing sets and inspect each sheet
         id: collect
         continue-on-error: true
-        run: python -m scripts.collect_public_pid_sets --out /tmp/public_client_pid_sets
+        run: python -m scripts.collect_public_pid_sets --out /tmp/public_client_pid_sets --analyze-one
       - name: Upload source-cited inventory only (no copyrighted PDFs)
         if: steps.collect.outcome == 'success'
         uses: actions/upload-artifact@v4
