@@ -20,7 +20,7 @@ _PREFIXES = (
     "PT", "PI", "FT", "FI", "LT", "LI", "TT", "TI", "P", "V", "E", "TK",
 )
 TAG_PATTERN = re.compile(
-    rf"^({'|'.join(_PREFIXES)})[- ]?(\d{{2,5}}[A-Z]?)$", re.IGNORECASE
+    rf"^({'|'.join(_PREFIXES)})[- ]?(\d{{2,7}}[A-Z]?)$", re.IGNORECASE
 )
 EQUIPMENT = {"P": "centrifugal_pump", "V": "vertical_separator"}
 VALVES = {
