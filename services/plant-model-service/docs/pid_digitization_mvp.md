@@ -1,6 +1,6 @@
 # Digital BDEP — Brownfield P&ID digitization pipeline
 
-Status: **working engineering prototype, awaiting full integration/CI validation**.
+Status: **engineering prototype, test-gated with synthetic fixtures; not validated on real industrial drawings**.
 This module is deliberately separate from greenfield simulation → plant-model compilation.
 
 ## 1. Input corpus (ready to generate)
@@ -20,7 +20,7 @@ Generated inputs (gitignored):
 - `baseline.pdf`: clean born-digital PDF with linework and native text.
 - `complex.pdf`: vectors, signal lines crossing process lines without a junction.
 - `multisheet.pdf`: two-page drawing.
-- `scanned.pdf`: image-only PDF (no native PDF text).
+- `elbow_crossing.pdf`: multi-stroke piping bends with deliberate non-junction solid crossing.\n- `scanned.pdf`: image-only PDF (no native PDF text).
 - `raster.png`: lossless raster.
 - `compressed.jpg`: lossy raster.
 - `expected_graph.json`: manually defined synthetic ground truth (not an inference input).
@@ -44,7 +44,7 @@ PDF vector primitive extraction      Raster OpenCV contours/Hough lines
                        ↓
        Geometric symbol hypotheses (circle, rect, bow-tie triangles)
                        ↓
-        One-segment adjacency proposals with source-stroke IDs
+        Multi-segment endpoint graph (no crossing junctions), each stroke ID retained
                        ↓
              Engineering review, including process direction
                        ↓
@@ -55,13 +55,13 @@ PDF vector primitive extraction      Raster OpenCV contours/Hough lines
 
 **Implemented:** Input normalization, vector text, optional local OCR,
 vector and raster geometry heuristics, candidate symbol tagging,
-conservative single-stroke topology proposals, source highlighting, persisted
+conservative multi-stroke endpoint topology proposals, full-route source highlighting, persisted
 tag/link review and export of explicitly approved process connections into a
 schema-valid draft PlantModel. This is a real staged workflow but *not* robust
 industrial P&ID understanding.
 
 **Not implemented:** Trained symbol model, native DWG/DXF parsing, DEXPI 2.0
-import, vector line networks across junctions, off-page connector matching,
+import, endpoint-on-interior T junctions and junction dots, off-page connector matching,
 automatic signal-versus-process line classification, advanced topology checks
 or publication into the approved plant baseline.
 
@@ -87,9 +87,8 @@ Open **http://127.0.0.1:8000/pid-digitization**.
 The user:
 1. Uploads PDF, PNG or JPEG. Chooses local OCR when scanning/raster input.
 2. Reviews extracted text tag candidates against the original page.
-3. Reviews source-highlighted geometry-based connection suggestions.
-4. Explicitly selects accepted/rejected and approved process direction.
-5. Opens the Digital BDEP `PlantModel` draft and evidence references.
+3. Independently reviews visual symbol matches (tag recognition is not symbol verification).\n4. Reviews complete source-highlighted multi-stroke connection suggestions.
+5. Explicitly selects accepted/rejected and approved process direction.\n6. Opens the Digital BDEP `PlantModel` draft and evidence references.
 
 API endpoints:
 
@@ -100,7 +99,7 @@ API endpoints:
 | GET | `/api/pid-digitization/imports/{id}/evidence` | Machine-readable source evidence, symbol/link hypotheses |
 | GET | `/api/pid-digitization/imports/{id}/pages/{page}.png` | Source page preview |
 | POST | `/api/pid-digitization/imports/{id}/review` | Human review of tag candidates |
-| POST | `/api/pid-digitization/imports/{id}/connections/review` | Human review of line proposals and direction |
+| POST | `/api/pid-digitization/imports/{id}/symbols/review` | Human review of visual geometry hypotheses (independent of tag review) |\n| POST | `/api/pid-digitization/imports/{id}/connections/review` | Human review of traced line proposals and process direction |\n| GET | `/api/pid-digitization/imports/{id}/annotations` | Reviewed source-aligned COCO-style symbol annotations |
 | GET | `/api/pid-digitization/imports/{id}/plant-draft` | Reviewed PlantModel draft, publish_ready=false |
 
 Example connection-review request:
@@ -127,7 +126,7 @@ Each image-origin import retains original file SHA-256 and pixel-to-PDF
 transform, while the normalized PDF has its own SHA-256.
 
 Each source-derived connection carries `tag_a`, `tag_b`,
-`source_segment_ids`, `source_bbox`, `page`, `direction`,
+`source_segment_ids`, full `source_route_points`, `source_bbox`, `page`, `direction`,
 `review_status` and (once approved) reviewer details.
 
 Source evidence is preserved in the import record. The exported draft contains
@@ -170,3 +169,41 @@ needed before embedding in a proprietary product).
 The next focused milestone is trained symbol detection + polyline network
 tracing with manually confirmed multi-sheet graph links, then controlled
 publishing into the BDEP revision baseline.
+
+
+## M2 implementation and benchmark
+
+M2 replaces single-stroke graph proposals with per-page endpoint-snapped graph
+search. Bends comprising multiple disjoint PDF strokes can now be traversed
+through exact or near-exact endpoint joins; the route stops at each detected
+symbol so an FCV does not collapse into the upstream/downstream line.
+
+Vector dashed strokes are excluded from process networks. Crossings where both
+lines pass through an interior point are not joined. T branches with an endpoint
+on the interior of another line and unverified off-sheet connectors are still
+open engineering challenges. No flow direction is inferred.
+
+Each connection proposal retains an ordered `source_route_points` polyline
+and ordered `source_segment_ids`. The source review UI can highlight the
+entire traced line on the original drawing. Even a perfect geometric match
+is **not a verified process connection** until engineer review.
+
+Tag review and geometric symbol verification are now separate operations.
+Only symbols explicitly accepted by an engineer (and with accepted tags)
+can appear in the COCO-style training-annotation API.
+
+### Automated benchmark report
+
+```bash
+cd services/plant-model-service
+python -m scripts.benchmark_pid_extraction
+cat data/pid_corpus/benchmark_report.json
+```
+
+This reports precision/recall/F1 for tags, shapes and undirected process
+connection hypotheses on independent synthetic fixtures, plus source-evidence
+completeness. The CI job also archives its benchmark JSON as an artifact.
+These values are *synthetic acceptance checks only*, not claims of industrial
+generalization. Real/PID2Graph dataset evaluation is next.
+
+M2 is on branch `feature/pid-topology-graph-m2` in draft PR #5.
