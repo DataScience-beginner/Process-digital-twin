@@ -228,6 +228,7 @@ def accepted_plant_draft(
             "source_segment_ids": edge.get("source_segment_ids", []),
             "source_route_points": edge.get("source_route_points", []),
             "trace_method": edge.get("trace_method", "direct_stroke"),
+            "source_tee_ids": edge.get("approved_tee_ids", []),
             "source_bbox": edge.get("source_bbox"),
             "reviewed_by": edge.get("reviewed_by"),
         })
