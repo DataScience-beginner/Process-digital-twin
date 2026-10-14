@@ -3,6 +3,8 @@ single-page extraction and source-document provenance without baseline write.
 """
 from __future__ import annotations
 
+import io
+import zipfile
 import fitz
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -129,3 +131,53 @@ def test_unknown_sheet_and_disguised_non_pdf_are_rejected(monkeypatch,tmp_path):
                     data={"client_label":"Test client","package_label":"drawing set"},
                     files=[("files",("bad.pdf",b"this is not a drawing","application/pdf"))])
     assert bad.status_code==422
+
+
+def test_zip_package_ingestion_is_path_safe_and_preserves_multiple_pdf_members(
+    monkeypatch, tmp_path
+):
+    engine=create_engine("sqlite+pysqlite://",
+                         connect_args={"check_same_thread":False},
+                         poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(intake,"_database",lambda:engine)
+    monkeypatch.setenv("BDEP_PID_STORAGE",str(tmp_path))
+    app=FastAPI()
+    app.include_router(intake.router)
+    client=TestClient(app)
+    archive=io.BytesIO()
+    with zipfile.ZipFile(archive,"w",compression=zipfile.ZIP_DEFLATED) as z:
+        z.writestr("project/01_Legend.pdf",fixture_pdf("legend"))
+        z.writestr("project/02_PandID.pdf",fixture_pdf("pid"))
+        z.writestr("project/README.txt","Testing a README to ensure it is ignored")
+    response=client.post(
+        "/api/pid-digitization/client-batches/zip",
+        data={"client_label":"Test zip client","package_label":"Rev A packaged drawings"},
+        files={"archive":("set.zip",archive.getvalue(),"application/zip")},
+    )
+    assert response.status_code==200,response.text
+    docs=response.json()["documents"]
+    assert len(docs)==2
+    assert {d["filename"] for d in docs}=={"01_Legend.pdf","02_PandID.pdf"}
+    assert all(d["preflight"]["source_sha256"] for d in docs)
+
+
+def test_disguised_zip_member_rejected(monkeypatch,tmp_path):
+    engine=create_engine("sqlite+pysqlite://",
+                         connect_args={"check_same_thread":False},
+                         poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(intake,"_database",lambda:engine)
+    monkeypatch.setenv("BDEP_PID_STORAGE",str(tmp_path))
+    app=FastAPI()
+    app.include_router(intake.router)
+    client=TestClient(app)
+    archive=io.BytesIO()
+    with zipfile.ZipFile(archive,"w") as z:
+        z.writestr("../evil.pdf",b"not a PDF")
+    response=client.post(
+        "/api/pid-digitization/client-batches/zip",
+        data={"client_label":"Test zip client","package_label":"Rev A drawings"},
+        files={"archive":("bad.zip",archive.getvalue(),"application/zip")},
+    )
+    assert response.status_code==422
