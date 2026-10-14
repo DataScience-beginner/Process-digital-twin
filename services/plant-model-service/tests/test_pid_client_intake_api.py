@@ -84,6 +84,12 @@ def test_client_package_workflow_requires_approved_legend_before_extraction(monk
     )
     assert crop.status_code==200
     assert crop.content.startswith(b"\x89PNG")
+    crop_review=client.post(
+        f"/api/pid-digitization/client-batches/{batch_id}/documents/{legend_doc['id']}/legends/{sample['id']}/crop",
+        json={"reviewer":"Eng-Test", "x0":45,"y0":115,"x1":95,"y1":160},
+    )
+    assert crop_review.status_code==200,crop_review.text
+    assert crop_review.json()["requires_separate_symbol_acceptance"] is True
     legend_review=client.post(
         f"/api/pid-digitization/client-batches/{batch_id}/legends/review",
         json={"reviewer":"Eng-Test",
