@@ -179,9 +179,7 @@ through exact or near-exact endpoint joins; the route stops at each detected
 symbol so an FCV does not collapse into the upstream/downstream line.
 
 Vector dashed strokes are excluded from process networks. Crossings where both
-lines pass through an interior point are not joined. T branches with an endpoint
-on the interior of another line and unverified off-sheet connectors are still
-open engineering challenges. No flow direction is inferred.
+lines pass through an interior point are not joined. T branches with an endpoint\non the interior of another line are now detected as **unresolved tee evidence**\nwith exact source positions but are not inserted into the process graph.\nUnverified off-sheet connectors remain an open engineering challenge. No flow direction is inferred.
 
 Each connection proposal retains an ordered `source_route_points` polyline
 and ordered `source_segment_ids`. The source review UI can highlight the
@@ -189,8 +187,7 @@ entire traced line on the original drawing. Even a perfect geometric match
 is **not a verified process connection** until engineer review.
 
 Tag review and geometric symbol verification are now separate operations.
-Only symbols explicitly accepted by an engineer (and with accepted tags)
-can appear in the COCO-style training-annotation API.
+Only symbols explicitly accepted by an engineer (and with accepted tags)\ncan appear in the COCO-style training-annotation API. A tag-only PDF does not\ngenerate positive visual training labels.
 
 ### Automated benchmark report
 
