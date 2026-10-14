@@ -2,7 +2,7 @@ name: P&ID Digitization OCR and Vision Tests
 
 on:
   pull_request:
-    branches: [feature/digital-bdep-foundation, feature/pid-digitization-mvp, main]
+    branches: [feature/digital-bdep-foundation, feature/pid-digitization-mvp, feature/pid-topology-graph-m2, main]
     paths:
       - 'services/plant-model-service/**'
       - '.github/workflows/pid-digitization-vision-ci.yml'
@@ -26,7 +26,7 @@ jobs:
       - name: Install project and optional OCR / CV dependencies
         run: python -m pip install -e '.[dev,ocr,vision]'
       - name: Test complete P&ID pipeline
-        run: pytest -q tests/test_pid_digitization.py tests/test_pid_digitization_api.py tests/test_pid_full_pipeline.py tests/test_pid_topology_m2.py
+        run: pytest -q tests/test_pid_digitization.py tests/test_pid_digitization_api.py tests/test_pid_full_pipeline.py tests/test_pid_topology_m2.py tests/test_pid_tee_m3.py tests/test_pid_tee_api_m3.py tests/test_pid_public_reference_m3.py
       - name: Report synthetic P&ID benchmark
         run: python -m scripts.benchmark_pid_extraction --report /tmp/pid_graph_benchmark.json
       - name: Archive benchmark JSON
@@ -35,3 +35,35 @@ jobs:
           name: pid-graph-benchmark
           path: /tmp/pid_graph_benchmark.json
           if-no-files-found: error
+
+  public-dexpi-reference:
+    runs-on: ubuntu-latest
+    # This check exercises an external publication and can be affected by remote hosting.
+    # It is supplemental, not a certification of model accuracy.
+    defaults:
+      run:
+        working-directory: services/plant-model-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install local reference tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr
+          python -m pip install -e '.[dev,ocr,vision,reference]'
+      - name: Download official DEXPI reference and attempt extraction
+        id: source
+        continue-on-error: true
+        run: python -m scripts.benchmark_public_dexpi --out /tmp/dexpi_reference
+      - name: Upload external input benchmark report
+        if: steps.source.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dexpi-public-reference
+          path: /tmp/dexpi_reference/dexpi_reference_report.json
+          if-no-files-found: error
+      - name: Signal failed external check
+        if: steps.source.outcome == 'failure'
+        run: echo "Official DEXPI benchmark was unavailable or invalid. Not a model regression; see prior logs."

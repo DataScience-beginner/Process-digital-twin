@@ -31,6 +31,9 @@ vision = [
   "opencv-python-headless>=4.10,<5",
   "numpy>=1.26,<3"
 ]
+reference = [
+  "CairoSVG>=2.7,<3"
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

@@ -13,7 +13,8 @@ MAX_TEE_PROPOSALS = 2000
 JOIN_TOLERANCE = 2.5
 
 
-def propose_unresolved_tees(segments: list[dict], document_sha256: str) -> list[dict]:
+def propose_unresolved_tees(segments: list[dict], document_sha256: str,
+                            symbols: list[dict] | None = None) -> list[dict]:
     vertical, horizontal = defaultdict(list), defaultdict(list)
     by_page = defaultdict(list)
     for s in segments:
@@ -27,6 +28,7 @@ def propose_unresolved_tees(segments: list[dict], document_sha256: str) -> list[
         elif abs(y1 - y2) <= 1.5 and abs(x1 - x2) > 15:
             by_page[s["page"]].append((s, "horizontal"))
             horizontal[(s["page"], round(y1 / JOIN_TOLERANCE))].append(s)
+    symbol_boxes = [item for item in (symbols or []) if item.get('geometry_id') and item.get('bbox')]
     proposals = []
     seen = set()
     for page, lines in sorted(by_page.items()):
@@ -50,6 +52,14 @@ def propose_unresolved_tees(segments: list[dict], document_sha256: str) -> list[
                             offset = abs(p[0] - cross_coordinate)
                             in_host = min(y1, y2) + JOIN_TOLERANCE < p[1] < max(y1, y2) - JOIN_TOLERANCE
                         if offset > JOIN_TOLERANCE or not in_host:
+                            continue
+                        # Valve/equipment symbol outlines are NOT pipe tees.
+                        if any(
+                            symbol["page"] == page
+                            and symbol["bbox"][0] - 3 <= p[0] <= symbol["bbox"][2] + 3
+                            and symbol["bbox"][1] - 3 <= p[1] <= symbol["bbox"][3] + 3
+                            for symbol in symbol_boxes
+                        ):
                             continue
                         key = (page, stroke["id"], host["id"], round(p[0], 1), round(p[1], 1))
                         if key in seen:

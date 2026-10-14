@@ -167,7 +167,11 @@ def propose_network_connections(symbols: list[dict], segments: list[dict],
                     stats["limitations"].append("Proposal limit reached; split input")
                     break
                 found_keys.add(scoped_key)
-                source_seg_ids = [s["id"] for s in route]
+                source_seg_ids = []
+                for source_seg in route:
+                    for original_id in source_seg.get("source_stroke_ids", [source_seg["id"]]):
+                        if not source_seg_ids or source_seg_ids[-1] != original_id:
+                            source_seg_ids.append(original_id)
                 box = _bbox_all([s["bbox"] for s in route])
                 evidence = f'{source_sha256}:{page}:{key}:{source_seg_ids}'
                 connections.append({
@@ -177,6 +181,10 @@ def propose_network_connections(symbols: list[dict], segments: list[dict],
                     "tag_id_b": target["tag_id"],
                     "type": _kind(source, target),
                     "source_segment_ids": source_seg_ids,
+                    "route_piece_ids": [stroke["id"] for stroke in route],
+                    "approved_tee_ids": sorted({
+                        t for stroke in route for t in stroke.get("approved_tee_ids", [])
+                    }),
                     "source_route_points": [
                         [round(nodes[n][0], 2), round(nodes[n][1], 2)]
                         for n in route_nodes
