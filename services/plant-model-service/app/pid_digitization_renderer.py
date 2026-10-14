@@ -13,7 +13,7 @@ button:focus,input:focus,select:focus{outline:2px solid #297bb3}#entries{flex:1;
 .entry{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px;border-bottom:1px solid #e2e6eb}
 .entry button{background:#edf4fa;color:#14283d;border:1px solid #bdcfe0}
 #source{position:relative;flex:2;min-width:270px}#pageImage{width:100%;display:block;border:1px solid #cbd5df}
-#mark{position:absolute;border:2px solid #bd1717;background:#ff000022;display:none;pointer-events:none;box-sizing:border-box}
+#mark{position:absolute;border:2px solid #bd1717;background:#ff000022;display:none;pointer-events:none;box-sizing:border-box}#routeOverlay{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none}
 #state{white-space:pre-wrap}pre{max-height:300px;overflow:auto;font-size:12px}
 @media(max-width:650px){.row>*{width:100%}#entries{max-height:320px}}
 </style></head><body><header><b>Digital BDEP · P&amp;ID Digitization</b> · <a href="/engineering">Engineering Workspace</a></header>
@@ -26,18 +26,27 @@ button:focus,input:focus,select:focus{outline:2px solid #297bb3}#entries{flex:1;
 <label>Reviewer ID <input id="reviewer" type="text" placeholder="Engineer ID"></label>
 <button id="save" type="button">Save page review</button><button id="draft" type="button">Export plant draft</button></div>
 <p id="summary" class="muted"></p><div class="row"><div id="entries"></div>
-<div id="source"><img id="pageImage" alt="Original engineering drawing page"><div id="mark"></div></div></div>
+<div id="source"><img id="pageImage" alt="Original engineering drawing page"><div id="mark"></div><svg id="routeOverlay" aria-hidden="true"></svg></div></div>
 <h2>3. Review proposed process connections</h2><p class="muted">Geometric hypotheses only. Accept only after verifying source stroke, endpoints and process direction.</p>
 <div id="connections"></div><button id="saveLinks" type="button">Save connection review</button><h2>4. Digital plant draft (not publishable)</h2><pre id="result" aria-live="polite"></pre></section></main><script>
 (function(){
 var data=null;var el=function(id){return document.getElementById(id)};
 function message(s){el('state').textContent=s}
 async function api(url,opt){var r=await fetch(url,opt);var value=await r.json().catch(function(){return {}});if(!r.ok)throw Error(typeof value.detail==='string'?value.detail:'Request failed');return value}
-function highlight(c){var p=data.pages.find(function(p){return p.page===c.page});var b=c.bbox||c.source_bbox;var mark=el('mark');
+function highlight(c){var p=data.pages.find(function(p){return p.page===c.page});var b=c.bbox||c.source_bbox;var mark=el('mark'),svg=el('routeOverlay');
+svg.style.display='none';svg.replaceChildren();
+if(c.source_route_points&&c.source_route_points.length>1){
+svg.setAttribute('viewBox','0 0 '+p.width+' '+p.height);svg.setAttribute('preserveAspectRatio','none');
+var line=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+line.setAttribute('points',c.source_route_points.map(function(pt){return pt.join(',')}).join(' '));
+line.setAttribute('fill','none');line.setAttribute('stroke','#d42625');
+line.setAttribute('stroke-width',Math.max(2,p.width/450));
+line.setAttribute('stroke-linecap','round');line.setAttribute('stroke-linejoin','round');
+svg.append(line);svg.style.display='block'}
 mark.style.left=(100*b[0]/p.width)+'%';mark.style.top=(100*b[1]/p.height)+'%';
 mark.style.width=(100*(b[2]-b[0])/p.width)+'%';mark.style.height=(100*(b[3]-b[1])/p.height)+'%';mark.style.display='block'}
 function showPage(n){el('pageImage').src='/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/pages/'+n+'.png';
-el('mark').style.display='none';var entries=el('entries');entries.replaceChildren();
+el('mark').style.display='none';el('routeOverlay').style.display='none';var entries=el('entries');entries.replaceChildren();
 var subset=data.candidates.filter(function(c){return c.page===Number(n)});
 subset.forEach(function(c){var row=document.createElement('div');row.className='entry';
 var btn=document.createElement('button');btn.type='button';btn.textContent=c.tag;btn.onclick=function(){highlight(c)};
@@ -55,9 +64,9 @@ var decisions=Array.from(el('entries').querySelectorAll('select')).map(function(
 if(!decisions.length)return;try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Review saved.');display()}catch(e){message(e.message)}};
 function showLinks(page){var area=el('connections');area.replaceChildren();
 var links=(data.connection_proposals||[]).filter(function(edge){return edge.page===page});
-if(!links.length){area.textContent='No direct vector-stroke links proposed for this page. Manual topology review is required.';return}
+if(!links.length){area.textContent='No traced geometric connections proposed on this page. Manual topology review is required.';return}
 links.forEach(function(edge){var row=document.createElement('div');row.className='entry';
-var btn=document.createElement('button');btn.type='button';btn.textContent=edge.tag_a+' — '+edge.tag_b;btn.onclick=function(){highlight(edge)};
+var btn=document.createElement('button');btn.type='button';btn.textContent=edge.tag_a+' — '+edge.tag_b+' ('+(edge.hops||1)+' strokes)';btn.onclick=function(){highlight(edge)};
 var status=document.createElement('select');status.dataset.id=edge.id;status.className='edge-status';
 ['unreviewed','accepted','rejected'].forEach(function(v){status.add(new Option(v,v))});status.value=edge.review_status;
 var direction=document.createElement('select');direction.className='edge-direction';direction.setAttribute('aria-label','Confirmed flow direction for '+edge.id);
