@@ -50,6 +50,17 @@ class SheetDecision(BaseModel):
     role: str = Field(pattern="^(legend|pid|index|context|unknown)$")
 
 
+class LegendDecision(BaseModel):
+    document_id: str
+    legend_term_id: str
+    decision: str = Field(pattern="^(accepted|rejected|unreviewed)$")
+
+
+class LegendReview(BaseModel):
+    reviewer: str = Field(min_length=2, max_length=120)
+    decisions: list[LegendDecision] = Field(min_length=1, max_length=150)
+
+
 class SheetReview(BaseModel):
     reviewer: str = Field(min_length=2, max_length=120)
     decisions: list[SheetDecision] = Field(min_length=1, max_length=100)
@@ -294,6 +305,81 @@ def analyze_client_sheet(batch_id: str, doc_id: str, page: int, ocr: bool = Fals
             "review_url": f"/pid-digitization?import_id={import_id}",
             "publish_ready": False,
         }
+
+
+@router.post("/api/pid-digitization/client-batches/{batch_id}/legends/review")
+def review_client_legend_examples(batch_id: str, review: LegendReview):
+    """Approve/reject visual legend examples independently of OCR labels.
+
+    An accepted example means an engineer reviewed the proposed source crop,
+    not that our model recognizes the same shape on other P&ID drawings.
+    """
+    with Session(_database()) as session:
+        row = _load(session, batch_id)
+        manifest = dict(row.manifest_json)
+        documents = {d["id"]: d for d in manifest["documents"]}
+        found = {}
+        for d in manifest["documents"]:
+            for legend in d["preflight"]["legend_terms"]:
+                found[(d["id"], legend["id"])] = (d, legend)
+        for decision in review.decisions:
+            key = (decision.document_id, decision.legend_term_id)
+            if key not in found:
+                raise HTTPException(422, detail="Unknown legend example")
+            doc, legend = found[key]
+            if decision.decision == "accepted":
+                role = doc["preflight"]["pages"][legend["page"] - 1]
+                if role["role"] != "legend" or role["role_review_status"] != "accepted":
+                    raise HTTPException(409, detail="Source sheet must first be approved as legend")
+                if not legend.get("proposed_symbol_crop_pdf"):
+                    raise HTTPException(422, detail="No traceable visual crop")
+        stamp = datetime.now(timezone.utc).isoformat()
+        for decision in review.decisions:
+            _, legend = found[(decision.document_id, decision.legend_term_id)]
+            legend["review_status"] = decision.decision
+            legend["reviewed_by"] = review.reviewer
+            legend["reviewed_at"] = stamp
+        manifest["review_events"] = [
+            *manifest.get("review_events", []),
+            {"event": "legend_example_review", "reviewer": review.reviewer,
+             "count": len(review.decisions), "timestamp": stamp},
+        ]
+        row.manifest_json = manifest
+        session.commit()
+        return {
+            "batch_id": batch_id,
+            "accepted_legend_examples": sum(
+                e["review_status"] == "accepted"
+                for d in manifest["documents"]
+                for e in d["preflight"]["legend_terms"]
+            ),
+            "reviewer": review.reviewer,
+        }
+
+
+@router.get("/api/pid-digitization/client-batches/{batch_id}/documents/{doc_id}/legends/{term_id}.png")
+def preview_legend_example(batch_id: str, doc_id: str, term_id: str):
+    with Session(_database()) as session:
+        row = _load(session, batch_id)
+        doc = _doc(row, doc_id)
+        match = next((t for t in doc["preflight"]["legend_terms"]
+                      if t["id"] == term_id), None)
+        if match is None:
+            raise HTTPException(404, detail="Legend sample not found")
+        if doc["preflight"]["pages"][match["page"] - 1]["role"] != "legend":
+            raise HTTPException(409, detail="Source page is not a legend")
+        box = match["proposed_symbol_crop_pdf"]
+        page_number = match["page"]
+    file_path = _file_path(batch_id, doc_id)
+    with fitz.open(file_path) as pdf:
+        p = pdf[page_number - 1]
+        clip = fitz.Rect(*box) & p.rect
+        if clip.is_empty:
+            raise HTTPException(422, detail="Empty legend clip")
+        pix = p.get_pixmap(matrix=fitz.Matrix(3, 3),
+                           clip=clip, alpha=False)
+        return Response(pix.tobytes("png"), media_type="image/png",
+                        headers={"Cache-Control": "private,no-store"})
 
 
 @router.get("/pid-client-intake", response_class=HTMLResponse)
