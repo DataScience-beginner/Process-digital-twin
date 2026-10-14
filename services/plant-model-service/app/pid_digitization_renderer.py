@@ -16,7 +16,7 @@ button:focus,input:focus,select:focus{outline:2px solid #297bb3}#entries{flex:1;
 #mark{position:absolute;border:2px solid #bd1717;background:#ff000022;display:none;pointer-events:none;box-sizing:border-box}#routeOverlay{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none}
 #state{white-space:pre-wrap}pre{max-height:300px;overflow:auto;font-size:12px}
 @media(max-width:650px){.row>*{width:100%}#entries{max-height:320px}}
-</style></head><body><header><b>Digital BDEP · P&amp;ID Digitization</b> · <a href="/engineering">Engineering Workspace</a></header>
+</style></head><body><header><b>Digital BDEP · P&amp;ID Digitization</b> · <a href="/engineering">Engineering Workspace</a> · <a href="/pid-client-intake">Client Package Intake</a></header>
 <main><section class="card"><h2>1. Import a legacy P&amp;ID</h2>
 <form id="upload"><input type="file" id="pdf" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" required><label><input type="checkbox" id="ocr"> Local OCR for scanned pages</label><button>Extract evidence</button></form>
 <p class="muted">Supports PDF, PNG and JPG. Optional local Tesseract OCR. Vector symbol and direct-line graph proposals require engineering verification; no unreviewed data is published.</p>
@@ -103,5 +103,7 @@ if(!decisions.length){message('No visual symbol matches on this page');return}
 try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/symbols/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Separate visual-symbol review saved.');display()}catch(e){message(e.message)}};
 el('annotations').onclick=async function(){try{var result=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/annotations');el('result').textContent=JSON.stringify(result,null,2)}catch(e){message(e.message)}};
 el('draft').onclick=async function(){try{var draft=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/plant-draft');el('result').textContent=JSON.stringify(draft,null,2)}catch(e){message(e.message)}};
+var original=new URLSearchParams(window.location.search).get('import_id');
+if(original)api('/api/pid-digitization/imports/'+encodeURIComponent(original)).then(function(v){data=v;message('Loaded original package source import '+data.id);display()}).catch(function(e){message(e.message)});
 })();
 </script></body></html>"""

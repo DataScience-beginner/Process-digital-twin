@@ -8,6 +8,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.db_schema import Base
 from app.pid_digitization_api import PidImportRow  # noqa: F401; register import table
+from app.pid_client_intake_api import PidClientBatchRow  # noqa: F401; register batch table
 
 config = context.config
 
