@@ -19,6 +19,7 @@ from .persistence import PROJECT_ID, ensure_demo_seeded
 from .pid_digitization import MAX_PDF_BYTES, accepted_plant_draft
 from .pid_pipeline import build_pid_extraction
 from .pid_training import build_verified_annotation_export
+from .pid_junction_review import reviewed_network
 from .pid_digitization_renderer import render_pid_digitization_html
 
 
@@ -94,6 +95,16 @@ class ConnectionDecision(BaseModel):
     proposal_id: str
     decision: str = Field(pattern="^(accepted|rejected|unreviewed)$")
     direction: str = Field(default="unverified", pattern="^(unverified|a_to_b|b_to_a)$")
+
+
+class TeeDecision(BaseModel):
+    proposal_id: str
+    decision: str = Field(pattern="^(accepted|rejected|unreviewed)$")
+
+
+class TeeReviewPayload(BaseModel):
+    reviewer: str = Field(min_length=2, max_length=120)
+    decisions: list[TeeDecision] = Field(min_length=1)
 
 
 class ConnectionReviewPayload(BaseModel):
@@ -252,6 +263,69 @@ def review_pid_connections(import_id: str, payload: ConnectionReviewPayload):
         return _public(row)
 
 
+@router.post("/api/pid-digitization/imports/{import_id}/tees/review")
+def review_pid_tees(import_id: str, payload: TeeReviewPayload):
+    """Approve source-pinned tee geometry and recompute UNREVIEWED line routes.
+
+    An engineer approving a tee never automatically approves any associated
+    equipment connection. Existing reviews are invalidated when paths change.
+    """
+    with Session(_database()) as session:
+        row = _load(session, import_id)
+        extracted = dict(row.extraction_json)
+        tees = extracted.get("unresolved_tees", [])
+        by_id = {tee["id"]: tee for tee in tees}
+        unknown = {d.proposal_id for d in payload.decisions} - set(by_id)
+        if unknown:
+            raise HTTPException(422, detail=f"Unknown T-junction proposals: {sorted(unknown)}")
+        time = datetime.now(timezone.utc).isoformat()
+        for decision in payload.decisions:
+            tee = by_id[decision.proposal_id]
+            tee["review_status"] = decision.decision
+            tee["reviewed_by"] = payload.reviewer
+            tee["reviewed_at"] = time
+        geometry = extracted.get("vector_evidence", {})
+        result = reviewed_network(
+            extracted.get("symbol_hypotheses", []),
+            geometry.get("segments", []),
+            tees,
+            extracted["document_sha256"],
+        )
+        bad_ids = {r["tee_id"] for r in result["junction_decisions"]["not_applied"]}
+        newly_accepted = {
+            decision.proposal_id for decision in payload.decisions
+            if decision.decision == "accepted"
+        }
+        if newly_accepted & bad_ids:
+            raise HTTPException(
+                422,
+                detail="Rejected invalid T-junction approval: source geometry failed validation",
+            )
+        old_edges = extracted.get("connection_proposals", [])
+        old_reviews = sum(edge.get("review_status") == "accepted" for edge in old_edges)
+        extracted["connection_proposals"] = result["connection_proposals"]
+        extracted["network_diagnostics"] = result["diagnostics"]
+        extracted["network_diagnostics"]["unresolved_tees"] = len(tees)
+        extracted["junction_decisions"] = result["junction_decisions"]
+        extracted["warnings"] = [
+            *extracted.get("warnings", []),
+            "T-junction review changed routing: ALL process connections require fresh engineering review"
+            if old_reviews else "T-junction review completed; all route proposals remain unreviewed",
+        ]
+        extracted["review_history"] = [
+            *extracted.get("review_history", []),
+            {
+                "stage": "tee_review", "reviewed_by": payload.reviewer,
+                "at": time, "decisions": len(payload.decisions),
+                "previously_approved_routes_invalidated": old_reviews,
+            },
+        ]
+        row.extraction_json = extracted
+        row.state = "topology_review_in_progress"
+        session.commit()
+        return _public(row)
+
+
 @router.get("/api/pid-digitization/imports/{import_id}/evidence")
 def get_pid_evidence(import_id: str):
     with Session(_database()) as session:
@@ -263,6 +337,7 @@ def get_pid_evidence(import_id: str):
             "geometry": row.extraction_json.get("vector_evidence", {}),
             "network_diagnostics": row.extraction_json.get("network_diagnostics", {}),
             "unresolved_tees": row.extraction_json.get("unresolved_tees", []),
+            "junction_decisions": row.extraction_json.get("junction_decisions", {}),
             "pipeline": row.extraction_json.get("pipeline", {}),
         }
 
