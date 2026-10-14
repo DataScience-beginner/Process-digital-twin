@@ -34,10 +34,10 @@ project access rules, encryption and secure storage are not yet implemented.</p>
 <h2>Drawing register / legend identification</h2>
 <div id="readiness" class="muted"></div>
 <div class="flex"><label>Review engineer <input id="reviewer" placeholder="Engineer ID"></label>
-<button id="save" type="button">Approve selected page roles</button></div>
+<button id="save" type="button">Approve selected page roles</button><label><input type="checkbox" id="batchOcr"> OCR on pages with sparse native tag text (slower)</label><button id="bulk" type="button">Digitize first 10 approved P&amp;IDs</button></div>
 <p class="muted">Check every sheet classification. Legend pages build a source-cited
 engineering vocabulary; text next to a symbol does not verify the geometry.</p>
-<div id="documents"></div></section>
+<div id="documents"></div><div id="batchResults" class="status"></div></section>
 <section class="box" id="legendLibrary" hidden><h2>Project legend symbol examples (human verification)</h2><p class="muted">Each example is a source-linked label and tentative left-side graphic crop. Many crops will be inaccurate. Inspect before accepting; accepted examples are not automatically applied to process drawings.</p><div id="legendItems"></div><div class="flex"><button id="saveLegend" type="button">Save inspected legend examples</button></div><img id="legendImage" class="preview" alt="Source-legend proposed symbol crop" hidden></section>
 <section class="box" id="viewer" hidden>
 <h2>Source-page inspection</h2>
@@ -118,6 +118,20 @@ var route=isZip?'/api/pid-digitization/client-batches/zip':'/api/pid-digitizatio
 try{state=await call(route,{method:'POST',body:body});
 msg('Uploaded package '+state.id+'. Review source-page roles and approve legends first.');show()}
 catch(err){msg(err.message)}};
+el('bulk').onclick=async function(){if(!state){msg('Upload a drawing package first');return}
+msg('Running 10 source-linked P&ID extractions sequentially; this may take time…');
+try{var result=await call('/api/pid-digitization/client-batches/'+state.id+
+'/analyze-approved?limit=10&ocr='+el('batchOcr').checked,{method:'POST'});
+var root=el('batchResults');root.replaceChildren();
+var note=document.createElement('p');note.textContent=result.processed+' P&ID sheets analyzed. '+
+result.remaining_sheets+' remaining. Every result requires engineering review.';root.append(note);
+result.results.forEach(function(item){var link=document.createElement('a');
+link.href=item.review_url;link.textContent='Source page '+item.source_original_page+
+' · '+item.tag_candidates+' tag candidates, '+item.connection_candidates+
+' graph proposals'+(item.reused?' (previous analysis)':'');
+link.style.display='block';link.target='_blank';root.append(link)});
+msg('Source-linked draft extraction complete. No plant-model baseline was modified.')}
+catch(e){msg(e.message)}};
 el('save').onclick=async function(){var reviewer=el('reviewer').value.trim();if(reviewer.length<2){msg('Enter reviewer ID first');return}
 var decisions=Array.from(el('documents').querySelectorAll('select.role')).map(function(s){
 return {document_id:s.dataset.doc,page:Number(s.dataset.page),role:s.value}});
