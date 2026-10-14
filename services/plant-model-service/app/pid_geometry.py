@@ -146,12 +146,33 @@ def detect_symbol_hypotheses(tags: list[dict], primitives: list[dict]) -> list[d
                     and _rect_distance(tag["bbox"], g["bbox"]) <= GEOMETRY_MATCH_DISTANCE]
         geometry.sort(key=lambda g: _rect_distance(tag["bbox"], g["bbox"]))
         best = geometry[0] if geometry else None
+        footprint = best["bbox"] if best else tag["bbox"]
+        evidence_ids = [best["id"]] if best else []
+        # A bow-tie valve is represented by two adjacent triangles. Merge
+        # their footprint if they share the same centre-line area.
+        if best and best["type"] == "triangle" and len(geometry) > 1:
+            neighbour = next((
+                candidate for candidate in geometry[1:]
+                if _rect_distance(candidate["bbox"], best["bbox"]) < 3
+                and abs(
+                    (candidate["bbox"][1] + candidate["bbox"][3]) -
+                    (best["bbox"][1] + best["bbox"][3])
+                ) < 10
+            ), None)
+            if neighbour:
+                box2 = neighbour["bbox"]
+                footprint = [
+                    min(footprint[0], box2[0]), min(footprint[1], box2[1]),
+                    max(footprint[2], box2[2]), max(footprint[3], box2[3]),
+                ]
+                evidence_ids.append(neighbour["id"])
         result.append({
             "tag_id": tag["id"], "tag": tag["tag"], "page": tag["page"],
             "symbol_type_from_tag": tag["object_type"],
             "visual_geometry": best["type"] if best else None,
             "geometry_id": best["id"] if best else None,
-            "bbox": best["bbox"] if best else tag["bbox"],
+            "geometry_ids": evidence_ids,
+            "bbox": footprint,
             "detection_method": "tag_and_vector_geometry_heuristic" if best else "tag_only",
             "confidence": "hypothesis_unverified",
             "review_status": "unreviewed",
