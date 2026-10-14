@@ -27,7 +27,7 @@ project access rules, encryption and secure storage are not yet implemented.</p>
 <form id="upload" class="flex">
 <label>Client label<input id="client" required minlength="2" value="Public demonstration"></label>
 <label>Drawing package<input id="package" required minlength="2" value="P&amp;ID and legend set"></label>
-<label>PDF drawing files (multiple)<input id="files" type="file" accept=".pdf" multiple required></label>
+<label>PDF drawing files (multiple) or one ZIP archive<input id="files" type="file" accept=".pdf,.zip" multiple required></label>
 <button type="submit">Upload and inventory</button></form>
 <p class="status" id="status" role="status"></p></section>
 <section class="box" id="inventory" hidden>
@@ -109,8 +109,13 @@ el('readiness').textContent='Legend pages approved: '+s.legend_sheets_approved.l
 ' | P&ID pages approved: '+s.pid_sheets_approved.length+' | '+s.readiness}catch(e){msg(e.message)}}
 el('upload').onsubmit=async function(e){e.preventDefault();var files=el('files').files;if(!files.length)return;msg('Uploading and classifying drawing sheets…');
 var body=new FormData();body.append('client_label',el('client').value);body.append('package_label',el('package').value);
-for(var i=0;i<files.length;i++)body.append('files',files[i]);
-try{state=await call('/api/pid-digitization/client-batches',{method:'POST',body:body});
+var isZip=files.length===1&&files[0].name.toLowerCase().endsWith('.zip');
+if(isZip){body.append('archive',files[0])}
+else{for(var i=0;i<files.length;i++){
+if(files[i].name.toLowerCase().endsWith('.zip')){msg('Upload a ZIP alone or multiple PDFs');return}
+body.append('files',files[i])}}
+var route=isZip?'/api/pid-digitization/client-batches/zip':'/api/pid-digitization/client-batches';
+try{state=await call(route,{method:'POST',body:body});
 msg('Uploaded package '+state.id+'. Review source-page roles and approve legends first.');show()}
 catch(err){msg(err.message)}};
 el('save').onclick=async function(){var reviewer=el('reviewer').value.trim();if(reviewer.length<2){msg('Enter reviewer ID first');return}
