@@ -15,12 +15,17 @@ dependencies = [
   "psycopg[binary]>=3.2,<4",
   "alembic>=1.13,<2",
   "pymupdf>=1.24,<2",
+  "Pillow>=10,<13",
   "python-multipart>=0.0.9,<1"
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8,<9"
+  "pytest>=8,<10",
+  "httpx>=0.27,<1"
+]
+ocr = [
+  "pytesseract>=0.3.13,<1"
 ]
 
 [tool.pytest.ini_options]
