@@ -112,9 +112,15 @@ def run_collection(out: Path, ids: list[str], *, save_originals: bool = False,
             if analyze_one:
                 pid_page = next(
                     (p["page"] for p in inventory["pages"]
-                     if p["role"] in ("pid","pid_candidate")),
+                     if p["role"] == "pid"),
                     None,
                 )
+                if pid_page is None:
+                    pid_page = next(
+                        (p["page"] for p in inventory["pages"]
+                         if p["role"] == "pid_candidate"),
+                        None,
+                    )
                 if pid_page:
                     from app.pid_client_intake import extract_single_page
                     from app.pid_pipeline import build_pid_extraction
