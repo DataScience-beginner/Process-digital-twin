@@ -80,8 +80,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install PDF and input classifier
-        run: python -m pip install -e '.[dev]'
+      - name: Install PDF, OCR and vision engines for real source
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr
+          python -m pip install -e '.[dev,ocr,vision]'
       - name: Download real legend + P&ID drawing sets and inspect each sheet
         id: collect
         continue-on-error: true
