@@ -28,7 +28,7 @@ button:focus,input:focus,select:focus{outline:2px solid #297bb3}#entries{flex:1;
 <p id="summary" class="muted"></p><div class="row"><div id="entries"></div>
 <div id="source"><img id="pageImage" alt="Original engineering drawing page"><div id="mark"></div><svg id="routeOverlay" aria-hidden="true"></svg></div></div>
 <h2>3. Review proposed process connections</h2><p class="muted">Geometric hypotheses only. Accept only after verifying source stroke, endpoints and process direction.</p>
-<div id="connections"></div><h2>Unresolved T-junctions (not joined)</h2><div id="unresolvedTees" class="muted"></div><button id="saveLinks" type="button">Save connection review</button><h2>4. Digital plant draft (not publishable)</h2><pre id="result" aria-live="polite"></pre></section></main><script>
+<div id="connections"></div><h2>Unresolved T-junctions (not joined)</h2><div id="unresolvedTees" class="muted"></div><button id="saveTees" type="button">Save junction review / Rebuild graph</button><button id="saveLinks" type="button">Save connection review</button><h2>4. Digital plant draft (not publishable)</h2><pre id="result" aria-live="polite"></pre></section></main><script>
 (function(){
 var data=null;var el=function(id){return document.getElementById(id)};
 function message(s){el('state').textContent=s}
@@ -71,8 +71,18 @@ var decisions=Array.from(el('entries').querySelectorAll('.tag-status')).map(func
 if(!decisions.length)return;try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});message('Review saved.');display()}catch(e){message(e.message)}};
 function showTees(page){var area=el('unresolvedTees');area.replaceChildren();var links=(data.unresolved_tees||[]).filter(function(x){return x.page===page});
 if(!links.length){area.textContent='No endpoint-to-interior tee candidates.';return}
-links.forEach(function(edge){var btn=document.createElement('button');btn.type='button';btn.textContent='Unresolved tee at '+edge.point.join(', ');
-btn.onclick=function(){highlight(edge)};area.append(btn)})}
+links.forEach(function(tee){var row=document.createElement('div');row.className='entry';
+var btn=document.createElement('button');btn.type='button';btn.textContent='T-junction '+tee.point.join(', ');
+btn.onclick=function(){highlight(tee)};
+var select=document.createElement('select');select.className='tee-status';select.dataset.id=tee.id;
+['unreviewed','accepted','rejected'].forEach(function(status){select.add(new Option(status,status))});
+select.value=tee.review_status;row.append(btn,select);area.append(row)})}
+el('saveTees').onclick=async function(){var reviewer=el('reviewer').value.trim();
+if(reviewer.length<2){message('Provide reviewer ID');return}
+var decisions=Array.from(el('unresolvedTees').querySelectorAll('.tee-status')).map(function(s){return {proposal_id:s.dataset.id,decision:s.value}});
+if(!decisions.length){message('No unresolved tee candidates on this page');return}
+try{data=await api('/api/pid-digitization/imports/'+encodeURIComponent(data.id)+'/tees/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:reviewer,decisions:decisions})});
+message('Junction evidence reviewed. All connection approvals on this import have been reset; recheck routes.');display()}catch(e){message(e.message)}};
 function showLinks(page){var area=el('connections');area.replaceChildren();
 var links=(data.connection_proposals||[]).filter(function(edge){return edge.page===page});
 if(!links.length){area.textContent='No traced geometric connections proposed on this page. Manual topology review is required.';return}
