@@ -43,6 +43,7 @@ def collect_ten_pid_evidence(
     original_sha = hashlib.sha256(raw).hexdigest()
     sheets: list[dict] = []
     tasks = []
+    source_evidence = []
     ocr_pages = ocr_pages or set()
     for page_num, expected_drawing in SHEETS:
         sheet = preflight["pages"][page_num - 1]
@@ -88,6 +89,29 @@ def collect_ten_pid_evidence(
             "warnings": result["warnings"][:20],
         }
         sheets.append(counted)
+        source_evidence.append({
+            "original_source_page": page_num,
+            "expected_drawing_number": expected_drawing,
+            "extracted_page_sha256": result["document_sha256"],
+            "tags": [{
+                "tag": c["tag"], "page": page_num,
+                "bbox": c["bbox"], "source_method": c.get("source_method"),
+                "source_text": c.get("source_text", ""),
+                "review_status": c["review_status"],
+            } for c in result["candidates"]],
+            "symbol_hypotheses": [{
+                "tag": z["tag"], "bbox": z["bbox"],
+                "geometry": z["visual_geometry"],
+                "method": z["detection_method"], "review_status": z["review_status"],
+            } for z in result["symbol_hypotheses"]],
+            "connection_hypotheses": [{
+                "source_tag": link["tag_a"], "target_tag": link["tag_b"],
+                "source_segments": link["source_segment_ids"],
+                "bbox": link["source_bbox"],
+                "review_status": link["review_status"],
+            } for link in result["connection_proposals"]],
+            "required_engineer_annotation": True,
+        })
         tasks.append({
             "source_pdf_sha256": original_sha, "source_pdf_page": page_num,
             "expected_drawing_index_number": expected_drawing,
@@ -124,6 +148,9 @@ def collect_ten_pid_evidence(
     }
     out.mkdir(parents=True, exist_ok=True)
     (out / "ten_sheet_extraction.json").write_text(json.dumps(summary, indent=2))
+    (out / "source_candidate_evidence.json").write_text(
+        json.dumps({"source_sha256": original_sha, "sheets": source_evidence}, indent=2)
+    )
     (out / "engineer_gold_annotation_tasks.json").write_text(
         json.dumps({"source_sha256": original_sha, "tasks": tasks}, indent=2)
     )
