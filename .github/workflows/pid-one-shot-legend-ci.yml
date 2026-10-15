@@ -1,0 +1,51 @@
+name: M6 - Real legend-trained symbol detection on P-203
+
+on:
+  pull_request:
+    branches: [feature/pid-m5-real-multisheet-benchmark, main]
+    paths:
+      - 'services/plant-model-service/**'
+      - '.github/workflows/pid-one-shot-legend-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  real-legend-experiment:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/plant-model-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install reproducible vision dependencies
+        run: python -m pip install -e '.[dev,vision]'
+      - name: Validate inference tool with synthetic known-shape unit tests
+        run: pytest -q tests/test_pid_one_shot_m6.py
+      - name: Download the original Pahala official P&ID reference
+        run: |
+          mkdir -p /tmp/pid_source /tmp/pid_m6_results
+          python - <<'PY'
+          from scripts.collect_public_pid_sets import download_pinned
+          from pathlib import Path
+          data=download_pinned("pahala")
+          Path("/tmp/pid_source/real_pahala.pdf").write_bytes(data)
+          print("Downloaded original government-hosted document: bytes",len(data))
+          PY
+      - name: Train one-shot visual exemplars from legend P-002 and match real P-203
+        run: |
+          python -m scripts.legend_one_shot_experiment \
+            --source /tmp/pid_source/real_pahala.pdf \
+            --out /tmp/pid_m6_results \
+            --render-width 2000
+      - name: Archive experiment evidence and source overlay
+        uses: actions/upload-artifact@v4
+        with:
+          name: m6-p002-legend-vs-p203-unverified-visual-detections
+          path: |
+            /tmp/pid_m6_results/legend_*.png
+            /tmp/pid_m6_results/p203_legend_match_overlay.png
+            /tmp/pid_m6_results/legend_one_shot_report.json
+          if-no-files-found: error
+          retention-days: 7
