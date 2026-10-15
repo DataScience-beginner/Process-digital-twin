@@ -41,7 +41,7 @@ def train_circular_instrument(legend_gray: np.ndarray) -> dict:
         "symbol":"single_variable_instrument_circle",
         "template_radius_px":round(float(r),2),
         "template_center_px":[round(float(x),2),round(float(y),2)],
-        "radius_scale_range":[.62,1.38],
+        "radius_scale_range":[.62,1.50],
         "algorithm":"legend-calibrated Hough circle geometry",
         "trained_with_actual_legend":True,
         "trained_model_type":"one_shot_analytical_feature_model",
