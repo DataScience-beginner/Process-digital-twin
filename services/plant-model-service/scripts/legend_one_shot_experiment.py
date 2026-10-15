@@ -54,7 +54,7 @@ ONE_SHOT_EXEMPLARS = [
     {"name": "single_variable_instrument", "box": [1005, 798, 1040, 835],
      "label": "SINGLE VARIABLE INSTRUMENT", "family": "instrument"},
 ]
-SCALES = [0.48, 0.57, 0.67, 0.78, 0.91, 1.05, 1.18, 1.32]
+SCALES = [0.48, 0.57, 0.67, 0.78, 0.91, 1.00, 1.05, 1.18, 1.32]
 THRESHOLD = 0.63
 MAX_PER_CLASS = 55
 PROCESS_REGION = (0.065, 0.105, 0.887, 0.84)
