@@ -1,8 +1,9 @@
 """Deterministic contract tests for the P-002 -> P-203 one-shot matcher."""
 from __future__ import annotations
 
-import cv2
-import numpy as np
+import pytest
+cv2 = pytest.importorskip("cv2")
+np = pytest.importorskip("numpy")
 
 from scripts.legend_one_shot_experiment import (
     ONE_SHOT_EXEMPLARS, _edges, _run_match, _template_box,
