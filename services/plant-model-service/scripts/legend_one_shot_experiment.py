@@ -30,6 +30,7 @@ import cv2
 import fitz
 import numpy as np
 from PIL import Image
+from app.pid_legend_shape_model import train_circular_instrument, find_circular_instruments
 
 SOURCE_URL = (
     "https://www.epa.gov/system/files/documents/2021-08/"
@@ -204,6 +205,48 @@ def run_one_shot_reference(pdf_bytes: bytes, out: Path,
             cv2.rectangle(result_img,(x1,y1),(x2,y2),
                           color_by_class[class_index],2)
     cv2.imwrite(str(out/"p203_legend_match_overlay.png"),result_img)
+    # Follow-up model: a *separate* geometry descriptor learned directly
+    # from the P-002 circular instrument example. It is insensitive to the
+    # literal XXX or client loop number inside the actual instrument bubble.
+    instrument_training_crop=cv2.imread(
+        str(out/"legend_single_variable_instrument.png"),cv2.IMREAD_GRAYSCALE
+    )
+    trained_circle_model=train_circular_instrument(instrument_training_crop)
+    (out/"trained_p002_instrument_geometry.json").write_text(
+        json.dumps(trained_circle_model,indent=2)
+    )
+    circle_proposals=find_circular_instruments(source,trained_circle_model)
+    instrument_overlay=cv2.cvtColor(target_img.copy(),cv2.COLOR_RGB2BGR)
+    for j,item in enumerate(circle_proposals,1):
+        cx,cy=item["center_px"]
+        r=item["radius_px"]
+        cv2.circle(instrument_overlay,(cx,cy),r,(0,130,10),2)
+        cv2.rectangle(instrument_overlay,(cx-r,cy-r),(cx+r,cy+r),
+                      (0,140,20),1)
+        item["source_pdf_page"]=TARGET_PDF_PAGE
+        item["source_pdf_sha256"]=sha
+        item["bbox_pdf_points"]=[
+            round(v/target_scale,2) for v in item["bbox_render_pixels"]
+        ]
+    cv2.imwrite(str(out/"p203_instrument_bubble_geometry_overlay.png"),
+                instrument_overlay)
+    # An exploratory visual spot-check was performed on P-203; these
+    # locations are *not* independent held-out gold data, so do not report
+    # them as measured precision or industrial recall.
+    inspected_anchors_2000=[
+        [547,209],[589,266],[631,266],[672,263],[757,263],
+        [1182,266],[1225,264],[1352,267],[714,337],
+        [1182,805],[1226,805],[1437,872],[1437,900],
+    ]
+    scale_anchor=render_width/2000
+    anchors=[
+        [int(x*scale_anchor),int(y*scale_anchor)]
+        for x,y in inspected_anchors_2000
+    ]
+    spot_hits=sum(any(
+        math.hypot(a[0]-item["center_px"][0],a[1]-item["center_px"][1])
+        <=max(9,9*scale_anchor) for item in circle_proposals
+    ) for a in anchors)
     # Include only candidate list, no copyrighted source page pixels in JSON.
     report={
         "experiment":"Pahala P-002 legend → P-203 actual P&ID",
@@ -219,6 +262,16 @@ def run_one_shot_reference(pdf_bytes: bytes, out: Path,
         "classes":classes,
         "total_hypotheses":len(all_matches),
         "detections":all_matches,
+        "legend_calibrated_instrument_bubble_model":trained_circle_model,
+        "instrument_bubble_candidates":circle_proposals,
+        "instrument_bubble_count":len(circle_proposals),
+        "manual_exploratory_spotcheck":{
+            "num_p203_locations_chosen_after_viewing_test_page":len(anchors),
+            "candidate_center_matches_within_9px":spot_hits,
+            "not_independent_gold":True,
+            "calibration_tuned_on_test_page":True,
+            "do_not_report_as_precision_recall":True,
+        },
         "precision_recall":"NOT MEASURED: engineer-verified bounding-box ground truth absent",
         "safety":"NO automatic digital plant publication",
         "critical_notes":[
@@ -230,6 +283,8 @@ def run_one_shot_reference(pdf_bytes: bytes, out: Path,
         "generated_files":[
             "p203_legend_match_overlay.png",
             "legend_source_page_preview.png",
+            "p203_instrument_bubble_geometry_overlay.png",
+            "trained_p002_instrument_geometry.json",
         ],
     }
     (out/"legend_one_shot_report.json").write_text(json.dumps(report,indent=2))
@@ -239,6 +294,8 @@ def run_one_shot_reference(pdf_bytes: bytes, out: Path,
         "classes":[{"name":x["name"],"hits":x["hypotheses_above_threshold"],
                     "scores":x["top_5_scores"]} for x in classes],
         "total_hypotheses":len(all_matches),
+        "instrument_bubble_candidates":len(circle_proposals),
+        "manual_visual_spotcheck_not_independent":spot_hits,
         "accuracy":"not verified",
     },indent=2))
     return report
