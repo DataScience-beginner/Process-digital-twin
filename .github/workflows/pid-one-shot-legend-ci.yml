@@ -46,6 +46,8 @@ jobs:
           path: |
             /tmp/pid_m6_results/legend_*.png
             /tmp/pid_m6_results/p203_legend_match_overlay.png
+            /tmp/pid_m6_results/p203_instrument_bubble_geometry_overlay.png
+            /tmp/pid_m6_results/trained_p002_instrument_geometry.json
             /tmp/pid_m6_results/legend_one_shot_report.json
           if-no-files-found: error
           retention-days: 7
