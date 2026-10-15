@@ -59,7 +59,7 @@ def find_circular_instruments(target_gray: np.ndarray,
         raise ValueError("Invalid source-calibrated search radius")
     detected=cv2.HoughCircles(
         cv2.medianBlur(target_gray,3),
-        cv2.HOUGH_GRADIENT,dp=1.1,minDist=max(18,2*min_r),
+        cv2.HOUGH_GRADIENT,dp=1.1,minDist=18,
         param1=120,param2=HOUGH_VOTE_THRESHOLD,
         minRadius=min_r,maxRadius=max_r,
     )
