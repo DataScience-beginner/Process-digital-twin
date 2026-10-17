@@ -204,3 +204,57 @@ def compile_library(pdf_bytes: bytes, manifest: dict[str, Any], output_folder: P
                        ("page_coverage.json", coverage), ("summary.json", summary)):
         (out / name).write_text(json.dumps(data, indent=2), encoding="utf-8")
     return summary
+
+
+def propose_glyph_rows(pdf_bytes: bytes, page_1based: int,
+                       glyph_x: tuple[float, float], label_x: tuple[float, float],
+                       y_bounds: tuple[float, float], *, scale: int = 3,
+                       merge_gap_pt: float = 2.5,
+                       id_prefix: str = "CAND") -> list[dict[str, Any]]:
+    """Find ink-row proposals within a manually identified COLUMN, not classes.
+
+    This image-projection heuristic merely reduces repeated drawing of crop
+    rectangles. One glyph may be split; two glyphs may merge; editorial markup
+    may look like a glyph.  All output requires independent visual review.
+    Source PDF pages are 1-based and PDF-point boxes use displayed rotation.
+    """
+    if not (scale >= 1 and scale <= 8 and merge_gap_pt >= 0):
+        raise ValueError("Invalid raster scale or merge gap")
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf:
+        if not 1 <= page_1based <= len(pdf): raise ValueError("Page out of range")
+        pg=pdf[page_1based-1]
+        x0,x1=glyph_x;lx0,lx1=label_x;y0,y1=y_bounds
+        normalize_bbox([x0,y0,x1,y1],pg,"glyph column")
+        normalize_bbox([lx0,y0,lx1,y1],pg,"label column")
+        if max(x0,lx0)<min(x1,lx1): raise ValueError("Glyph and label columns overlap")
+        img=_crop(pg,[x0,y0,x1,y1],scale=scale).convert("L")
+        import numpy as np
+        gray=np.asarray(img)
+        counts=(gray<160).sum(axis=1)
+        # Require some dark ink across each band; thin hairlines must survive.
+        occupied=counts>=2
+        runs=[];beg=None
+        for i,v in enumerate(occupied):
+            if v and beg is None:beg=i
+            elif not v and beg is not None:runs.append([beg,i-1]);beg=None
+        if beg is not None:runs.append([beg,len(occupied)-1])
+        merged=[]
+        for beg,end in runs:
+            if merged and beg-merged[-1][1] <= round(merge_gap_pt*scale):
+                merged[-1][1]=end
+            else:merged.append([beg,end])
+        result=[]
+        for beg,end in merged:
+            if end-beg < max(3,round(1.5*scale)):continue
+            lo=max(y0,y0+beg/scale-1.0);hi=min(y1,y0+(end+1)/scale+1.0)
+            n=len(result)+1
+            result.append({
+                "id":f"{id_prefix}_{n:03d}","page_1based":page_1based,
+                "glyph_bbox_pdf_pt":[round(x0,2),round(lo,2),round(x1,2),round(hi,2)],
+                "label_bbox_pdf_pt":[round(lx0,2),round(lo,2),round(lx1,2),round(hi,2)],
+                "label_verbatim":"","class_code":None,"review_status":"needs_review",
+                "glyph_isolated_confirmed":False,"label_paired_confirmed":False,
+                "ports_review_status":"UNVERIFIED",
+                "proposal_warning":"POSSIBLY_MERGED_ROWS" if hi-lo>23 else "PROPOSAL_ONLY",
+            })
+        return result

@@ -5,7 +5,7 @@ import json
 import fitz
 import pytest
 
-from app.pid_legend_library import create_inventory, compile_library
+from app.pid_legend_library import create_inventory, compile_library, propose_glyph_rows
 from scripts.build_pid_legend_library import _pages
 
 
@@ -88,3 +88,29 @@ def test_invalid_crop_or_wrong_page_fail(tmp_path):
 def test_full_range_input():
     assert _pages("2,4-6")==[2,4,5,6]
     with pytest.raises(ValueError):_pages("5-3")
+
+
+def test_ink_row_proposals_are_not_auto_labeled_or_approved():
+    pytest.importorskip("numpy")
+    raw=fixture_pdf()
+    result=propose_glyph_rows(raw,1,(30,105),(130,390),(30,100),id_prefix="TEST")
+    assert len(result)>=1
+    assert all(x["review_status"]=="needs_review" and not x["label_verbatim"] for x in result)
+    assert all(x["glyph_bbox_pdf_pt"][0]==30 for x in result)
+
+def test_row_proposer_rejects_mixed_columns():
+    pytest.importorskip("numpy")
+    with pytest.raises(ValueError,match="overlap"):
+        propose_glyph_rows(fixture_pdf(),1,(30,130),(105,390),(30,100))
+
+
+def test_review_html_is_offline_and_does_not_self_approve(tmp_path):
+    from scripts.build_pid_legend_review_html import build_html
+    raw=fixture_pdf();m=manifest(raw)
+    compile_library(raw,m,tmp_path)
+    s=build_html(m,tmp_path)
+    assert "data:image/png;base64," in s
+    assert "NO" not in s[:20]  # HTML, not a status write
+    assert '"review_status": "needs_review"' in s
+    assert "Export annotated inventory JSON" in s
+    assert "https://" not in s  # no CDNs/external assets

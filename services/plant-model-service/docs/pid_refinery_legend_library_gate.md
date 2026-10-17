@@ -30,6 +30,28 @@ python -m scripts.build_pid_legend_library compile \
 pytest -q tests/test_pid_legend_library.py
 ```
 
+### Optional raw ink-row proposals — NOT mapped library entries
+
+After identifying the actual graphical-symbol and text columns on a source sheet,
+run the uncalibrated column segmentation helper. Requires optional `vision`
+dependencies: `pip install -e '.[dev,vision]'`. Every exported proposed row has
+an empty label and is not a valid reviewed symbol; some bands merge two glyphs.
+
+```bash
+python -m scripts.build_pid_legend_library propose-rows --pdf /private/client.pdf \
+  --page 4 --glyph-x 210,238 --label-x 245,335 --y 40,700 \
+  --prefix COL_A --out /private/client-library
+# Safely append the proposals to inventory.json, inspect pairs and correct boxes.
+python -m scripts.build_pid_legend_review_html \
+  --manifest /private/client-library/inventory.json \
+  --compiled-dir /private/client-library/build \
+  --out /private/client-library/engineer_review.html
+```
+
+The offline reviewer merely exports metadata, without authentication. Any
+engineering approval must be verified outside this prototype. An 'approved'
+value in a JSON file is not an authenticated signoff.
+
 ### Manifest entry example (SYNTHETIC; no client-derived coordinates)
 
 ```json
