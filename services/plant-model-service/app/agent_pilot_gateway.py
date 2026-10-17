@@ -7,6 +7,9 @@ Recognition remains a separate, engineering-gated pipeline.
 from __future__ import annotations
 
 import hashlib
+import io
+import json
+import zipfile
 import hmac
 import os
 import secrets
@@ -15,8 +18,9 @@ from uuid import uuid4
 
 import fitz
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import (Column, DateTime, ForeignKey, Integer, LargeBinary,
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, LargeBinary,
                         MetaData, String, Table, UniqueConstraint, create_engine,
                         select, update)
 from sqlalchemy.engine import Engine
@@ -53,6 +57,23 @@ documents = Table("agent_pilot_documents", SCHEMA,
     Column("source_page", LargeBinary, nullable=False),
     Column("status", String(60), nullable=False),
     UniqueConstraint("company_id", "kind", "sha256", "page_number", name="uq_agent_pilot_source"),
+)
+recognition_jobs = Table("agent_pilot_recognition_jobs", SCHEMA,
+    Column("id", String(40), primary_key=True),
+    Column("company_id", String(40), nullable=False),
+    Column("project_id", String(40), nullable=False),
+    Column("document_id", String(40), ForeignKey(documents.c.id), unique=True, nullable=False),
+    Column("state", String(60), nullable=False),
+    Column("attempts", Integer, nullable=False, default=0),
+    Column("created_at", DateTime, nullable=False),
+    Column("started_at", DateTime, nullable=True),
+    Column("completed_at", DateTime, nullable=True),
+    Column("graph_json", JSON, nullable=True),
+    Column("summary_json", JSON, nullable=True),
+    Column("benchmark_json", JSON, nullable=True),
+    Column("artifact_png", LargeBinary, nullable=True),
+    Column("artifact_pdf", LargeBinary, nullable=True),
+    Column("error_code", String(100), nullable=True),
 )
 questions = Table("agent_pilot_questions", SCHEMA,
     Column("id", String(40), primary_key=True),
@@ -154,6 +175,13 @@ def _advance(db, company_id: str, project_id: str):
             _question(db, company_id, project_id, "CONTACT_SALES",
                       "Your two-P&ID free pilot is allocated. Contact our engineering team for additional conversions.")
         db.execute(update(documents).where(documents.c.id == doc["id"]).values(status=new_status))
+        if new_status == "ready_for_recognition":
+            # Persisted agent job, never run heavy image processing inside upload.
+            db.execute(recognition_jobs.insert().values(
+                id=_id(), company_id=company_id, project_id=project_id,
+                document_id=doc["id"], state="queued", attempts=0,
+                created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+            _event(db, company_id, project_id, "orchestrator_agent", "recognition_job_queued")
         _event(db, company_id, project_id, "quota_agent", new_status)
     db.execute(update(companies).where(companies.c.id == company_id).values(
         free_used=free_used, paid_credits=paid_left))
@@ -294,7 +322,7 @@ def create_app(db_url: str | None = None, *, admin_token: str | None = None,
             credit = current == "ready_for_recognition" and kind == "pid"
         return {"document_id": doc_id, "status": current, "duplicate": False,
                 "free_or_paid_credit_reserved": credit,
-                "note": "Recognition and engineering graph validation are not completed by this gateway"}
+                "note": "Recognizing uses an isolated source-geometry worker; physical graph publication requires engineer review"}
 
     @app.get("/api/projects/{project_id}/status")
     def project_status(project_id: str, company_id: str = Depends(tenant)):
@@ -309,10 +337,60 @@ def create_app(db_url: str | None = None, *, admin_token: str | None = None,
                 questions.c.project_id == project_id)).mappings().all()
             history = db.execute(select(events.c.agent, events.c.event_code).where(
                 events.c.company_id == company_id, events.c.project_id == project_id)).mappings().all()
+            jobs = db.execute(select(recognition_jobs.c.document_id, recognition_jobs.c.state,
+                recognition_jobs.c.attempts, recognition_jobs.c.summary_json, recognition_jobs.c.error_code)
+                .where(recognition_jobs.c.company_id == company_id,
+                       recognition_jobs.c.project_id == project_id)).mappings().all()
         return {"project_id": project_id, "free_pid_used": company["free_used"],
                 "free_pid_limit": 2, "paid_credits_remaining": company["paid_credits"],
                 "documents": [dict(x) for x in docs], "chat_questions": [dict(x) for x in chats],
-                "agent_events": [dict(x) for x in history]}
+                "agent_events": [dict(x) for x in history],
+                "recognition_jobs": [dict(x) for x in jobs]}
+
+    def _job_for_company(db, company_id: str, project_id: str, document_id: str):
+        ensure_project(db, company_id, project_id)
+        row = db.execute(select(recognition_jobs).where(
+            recognition_jobs.c.company_id == company_id,
+            recognition_jobs.c.project_id == project_id,
+            recognition_jobs.c.document_id == document_id)).mappings().first()
+        if row is None:
+            raise HTTPException(404, "No recognition analysis for this document")
+        return row
+
+    @app.get("/api/projects/{project_id}/documents/{document_id}/candidate-graph")
+    def candidate_graph(project_id: str, document_id: str, company_id: str = Depends(tenant)):
+        with engine.connect() as db:
+            row = _job_for_company(db, company_id, project_id, document_id)
+            if row["state"] != "candidate_review_ready":
+                raise HTTPException(409, "Source analysis not ready")
+            return {"document_id": document_id, "state": row["state"],
+                    "graph": row["graph_json"], "summary": row["summary_json"],
+                    "benchmark": row["benchmark_json"], "engineering_publish_ready": False}
+
+    @app.get("/api/projects/{project_id}/documents/{document_id}/artifact")
+    def candidate_artifact(project_id: str, document_id: str,
+                           format: str = Query("zip", pattern="^(zip|png|pdf)$"),
+                           company_id: str = Depends(tenant)):
+        with engine.connect() as db:
+            row = _job_for_company(db, company_id, project_id, document_id)
+            if row["state"] != "candidate_review_ready":
+                raise HTTPException(409, "Source analysis not ready")
+            if format == "png":
+                body, content_type, filename = row["artifact_png"], "image/png", "candidate_markup.png"
+            elif format == "pdf":
+                body, content_type, filename = row["artifact_pdf"], "application/pdf", "candidate_annotated.pdf"
+            else:
+                payload = io.BytesIO()
+                with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                    archive.writestr("candidate_markup.png", row["artifact_png"])
+                    archive.writestr("candidate_annotated.pdf", row["artifact_pdf"])
+                    archive.writestr("candidate_graph.json", json.dumps(row["graph_json"], indent=2))
+                    archive.writestr("candidate_summary.json", json.dumps(row["summary_json"], indent=2))
+                    archive.writestr("READ_ME_FIRST.txt", "Engineering-unreviewed geometry candidates. No physical edges approved.\n")
+                body, content_type, filename = payload.getvalue(), "application/zip", "candidate_review.zip"
+        return Response(body, media_type=content_type, headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
     @app.post("/api/projects/{project_id}/chat/{question_id}/reply")
     def reply(project_id: str, question_id: str, msg: ChatReply,
