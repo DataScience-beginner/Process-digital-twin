@@ -10,6 +10,10 @@ from collections import Counter, defaultdict
 from typing import Any
 
 import fitz
+try:
+    from .pid_full_symbol_audit import scan_native_motifs
+except ImportError:  # local single-file app launcher
+    from pid_full_symbol_audit import scan_native_motifs
 from PIL import Image, ImageDraw
 
 SCHEMA = 'pid-one-upload-candidate-graph-v1'
@@ -137,7 +141,7 @@ def _import_reviewed(reviewed,pdf_sha,page_1based):
             'owner_reviewed_visual_paths':reviewed.get('reviewed_visual_path_evidence',[])}
 
 
-def _overlay(page,instruments,strokes,tags,reviewed,scale=.82):
+def _overlay(page,instruments,strokes,tags,reviewed,scale=.82,compound_motifs=None):
     # Never cover source drawing: translucent geometry is unavailable in PIL; use thin outlines.
     pix=page.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False)
     im=Image.frombytes('RGB',(pix.width,pix.height),pix.samples)
@@ -148,6 +152,10 @@ def _overlay(page,instruments,strokes,tags,reviewed,scale=.82):
     colors={'SQUARE_CIRCLE_DIVIDER':'#d13e27','SQUARE_CIRCLE':'#d13e27','CIRCLE_DIVIDER':'#ba7e29','PLAIN_CIRCLE':'#257be5'}
     for x in instruments:
         bb=x['bbox_pdf_pt'];d.rectangle([int(z*scale) for z in bb],outline=colors[x['geometry_profile']],width=2)
+    for x in (compound_motifs or []):
+        colors2={'INTERLOCK_LOGIC':'#a83dab','INLINE_VALVE_FAMILY':'#15a14b','NOTE_MARKER_NOT_EQUIPMENT':'#c78b25','FILLED_ARROW_CANDIDATE':'#d33b38','SMALL_ROUND_CAD_MOTIF':'#258e94'}
+        if x['family'] not in colors2: continue
+        bb=x['bbox_pdf_pt']; d.rectangle([int(z*scale) for z in bb], outline=colors2[x['family']], width=1)
     for t in tags['equipment_tag_observations']:
         d.rectangle([int(z*scale) for z in t['bbox_pdf_pt']],outline='#8f35ae',width=2)
     for node in reviewed['approved_local_equipment_nodes']:
@@ -166,7 +174,7 @@ def _overlay(page,instruments,strokes,tags,reviewed,scale=.82):
     return bio.getvalue()
 
 
-def _make_pdf_markup(pdf_bytes,page_1based,instruments,reviewed):
+def _make_pdf_markup(pdf_bytes,page_1based,instruments,reviewed,compound_motifs=None):
     # Source remains vector and zoomable. Only derived customer output; never public repository.
     with fitz.open(stream=pdf_bytes,filetype='pdf') as original:
         one=fitz.open()
@@ -176,6 +184,10 @@ def _make_pdf_markup(pdf_bytes,page_1based,instruments,reviewed):
             rect=fitz.Rect(record['bbox_pdf_pt'])
             is_composite=record['geometry_profile'] in ('SQUARE_CIRCLE_DIVIDER','SQUARE_CIRCLE')
             pg.draw_rect(rect,color=(.88,.1,.08) if is_composite else (.1,.42,.84),width=1.7,overlay=True)
+        colors2={'INTERLOCK_LOGIC':(.65,.1,.71),'INLINE_VALVE_FAMILY':(.07,.62,.23),'NOTE_MARKER_NOT_EQUIPMENT':(.81,.55,.09),'FILLED_ARROW_CANDIDATE':(.8,.16,.18),'SMALL_ROUND_CAD_MOTIF':(.18,.62,.63)}
+        for c in (compound_motifs or []):
+            if c['family'] in colors2:
+                pg.draw_rect(fitz.Rect(c['bbox_pdf_pt']),color=colors2[c['family']],width=.6,overlay=True)
         for n in reviewed['approved_local_equipment_nodes']:
             x,y=n['center'];pg.draw_circle((x,y),20,color=(0,.65,.25),width=3,overlay=True)
         for p in reviewed['approved_local_ports']:
@@ -201,13 +213,15 @@ def process_single_page(pdf_bytes,page_1based=1,*,approved_review=None,render_sc
         instruments=_geom_profiles(drawings,words)
         strokes=_cad_strokes(drawings,page)
         tags=_word_register(words)
+        complete_glyphs=scan_native_motifs(page, drawings, words)
         reviewed=_import_reviewed(approved_review,sha,page_1based)
         network=_stroke_endpoint_network(strokes)
         t_extract=time.perf_counter()
-        overlay=_overlay(page,instruments,strokes,tags,reviewed,scale=render_scale)
-        pdf_preview=_make_pdf_markup(pdf_bytes,page_1based,instruments,reviewed)
+        overlay=_overlay(page,instruments,strokes,tags,reviewed,scale=render_scale,compound_motifs=complete_glyphs['candidates'])
+        pdf_preview=_make_pdf_markup(pdf_bytes,page_1based,instruments,reviewed,compound_motifs=complete_glyphs['candidates'])
     t_done=time.perf_counter()
-    summary={'native_vector_paths':len(drawings),'instrument_geometry_count':len(instruments),
+    summary={'source_motif_candidates_not_unique_devices':len(complete_glyphs['candidates']),
+        'source_motif_classes':complete_glyphs['counts'],'native_vector_paths':len(drawings),'instrument_geometry_count':len(instruments),
         'instrument_geometry_profiles':dict(Counter(x['geometry_profile'] for x in instruments)),
         'raw_cad_stroke_count':len(strokes),'geometric_endpoint_clusters':network['endpoint_clusters'],
         'line_tag_text_count':len(tags['line_tag_observations']),
@@ -220,14 +234,15 @@ def process_single_page(pdf_bytes,page_1based=1,*,approved_review=None,render_sc
         'page_candidate_complete':False}
     graph={'schema':SCHEMA,'source_sha256':sha,'page_1based':page_1based,'page_type':'VECTOR_PDF',
         'coordinate_space':'displayed_pdf_points','nodes':{'instrument_shape_candidates':instruments,
-        'source_text':tags,'owner_reviewed_local_equipment':reviewed['approved_local_equipment_nodes'],
+        'source_text':tags,'whole_sheet_complete_glyph_geometry_proposals':complete_glyphs['candidates'],'owner_reviewed_local_equipment':reviewed['approved_local_equipment_nodes'],
         'owner_reviewed_local_ports':reviewed['approved_local_ports']},
         'edges':{'source_cad_strokes':strokes,'geometric_endpoint_network':network,
         'owner_reviewed_visual_paths_NOT_physical_pipe_edges':reviewed['owner_reviewed_visual_paths'],
         'engineering_approved_physical_connections':[]},
         'provisional_graph_only':True,'publish_ready':False,
         'limits':['Only red CAD geometry is considered in this fast pilot',
-        'No full symbol classification accuracy established',
+        'Source-glyph audit includes inline valve bowties, rotated logic diamonds and notes, but no verified full symbol coverage'
+        ,'No full symbol classification accuracy established',
         'DCS classes are geometry-family proposals, not complete legend semantic approvals',
         'Long CAD strokes may include annotations/signal lines and are not process pipes',
         'Endpoint clusters are geometric only, crossing/tees and directions unverified',
