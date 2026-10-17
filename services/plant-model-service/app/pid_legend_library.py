@@ -145,11 +145,13 @@ def compile_library(pdf_bytes: bytes, manifest: dict[str, Any], output_folder: P
                 a = row.get("glyph_reviewer", "")
                 b = row.get("label_reviewer", "")
                 if not (isinstance(label, str) and label.strip() and
+                        isinstance(row.get("class_code"), str) and
+                        row["class_code"].strip() and
                         isinstance(a, str) and a.strip() and isinstance(b, str) and
                         b.strip() and a.strip() != b.strip() and
                         row.get("glyph_isolated_confirmed") is True and
                         row.get("label_paired_confirmed") is True):
-                    raise ValueError(f"{identity}: needs distinct reviewers and explicit glyph/label checks")
+                    raise ValueError(f"{identity}: needs a nonempty class, distinct reviewers, and explicit glyph/label checks")
             picture = _crop(page, glyph_box, scale=scale)
             gr = picture.convert("L")
             px = list(gr.get_flattened_data())
