@@ -123,3 +123,29 @@ def test_approved_requires_explicit_class_code(tmp_path):
         glyph_isolated_confirmed=True,label_paired_confirmed=True)
     with pytest.raises(ValueError,match="nonempty class"):
         compile_library(raw,m,tmp_path)
+
+
+def test_owner_mapping_approval_is_preserved_but_not_full_gate(tmp_path):
+    raw = fixture_pdf()
+    m = manifest(raw)
+    m["symbols"][0]["owner_mapping_approval"] = {
+        "status": "approved", "reviewer_role": "project_owner",
+        "review_date": "2026-10-17", "evidence": "explicit user message",
+    }
+    summary = compile_library(raw, m, tmp_path)
+    assert summary["glyphs_project_owner_approved"] == 1
+    assert summary["glyphs_reviewed_and_approved"] == 0
+    assert summary["library_readiness"] == "NOT_READY"
+    item = json.loads((tmp_path / "worklist.json").read_text())[0]
+    assert item["owner_mapping_approval"]["status"] == "approved"
+
+
+def test_owner_approval_requires_traceable_evidence(tmp_path):
+    raw = fixture_pdf()
+    m = manifest(raw)
+    m["symbols"][0]["owner_mapping_approval"] = {
+        "status": "approved", "reviewer_role": "project_owner",
+        "review_date": "2026-10-17", "evidence": "",
+    }
+    with pytest.raises(ValueError, match="owner mapping approval evidence"):
+        compile_library(raw, m, tmp_path)
