@@ -14,6 +14,10 @@ try:
     from .pid_full_symbol_audit import scan_native_motifs
 except ImportError:  # local single-file app launcher
     from pid_full_symbol_audit import scan_native_motifs
+try:
+    from .pid_geometry_relations import build_candidate_relationships
+except ImportError:
+    from pid_geometry_relations import build_candidate_relationships
 from PIL import Image, ImageDraw
 
 SCHEMA = 'pid-one-upload-candidate-graph-v1'
@@ -216,6 +220,16 @@ def process_single_page(pdf_bytes,page_1based=1,*,approved_review=None,render_sc
         complete_glyphs=scan_native_motifs(page, drawings, words)
         reviewed=_import_reviewed(approved_review,sha,page_1based)
         network=_stroke_endpoint_network(strokes)
+        # One-pass provisional graph for the complete symbol families, source CAD
+        # strokes, native pipe text, tees and crossings; NO promoted physical edges.
+        symbol_shapes=[{'id':v['id'],'bbox_pdf_pt':v['bbox_pdf_pt'],
+                        'family':v['family']} for v in complete_glyphs['candidates']
+                       if v['family'] in ('INSTRUMENT_ENVELOPE','INLINE_VALVE_FAMILY','INTERLOCK_LOGIC')]
+        for pump in reviewed['approved_local_equipment_nodes']:
+            x,y=pump['center']
+            symbol_shapes.append({'id':pump['id'],'bbox_pdf_pt':[x-18,y-18,x+18,y+18],
+                                  'family':'OWNER_APPROVED_EQUIPMENT_POSITION'})
+        geometry_relations=build_candidate_relationships(drawings,words,symbol_shapes)
         t_extract=time.perf_counter()
         overlay=_overlay(page,instruments,strokes,tags,reviewed,scale=render_scale,compound_motifs=complete_glyphs['candidates'])
         pdf_preview=_make_pdf_markup(pdf_bytes,page_1based,instruments,reviewed,compound_motifs=complete_glyphs['candidates'])
@@ -229,6 +243,9 @@ def process_single_page(pdf_bytes,page_1based=1,*,approved_review=None,render_sc
         'approved_equipment_locations':len(reviewed['approved_local_equipment_nodes']),
         'approved_local_ports':len(reviewed['approved_local_ports']),
         'reviewed_visual_paths':len(reviewed['owner_reviewed_visual_paths']),
+        'candidate_symbol_shared_stroke_links':geometry_relations['statistics']['shared_run_relations'],
+        'candidate_teees':geometry_relations['statistics']['tee_candidates'],
+        'unassigned_native_line_tags':geometry_relations['statistics']['line_tag_occurrences'],
         'accepted_physical_graph_edges':0,
         'unknown_symbol_class_count':len(instruments),
         'page_candidate_complete':False}
@@ -238,7 +255,8 @@ def process_single_page(pdf_bytes,page_1based=1,*,approved_review=None,render_sc
         'owner_reviewed_local_ports':reviewed['approved_local_ports']},
         'edges':{'source_cad_strokes':strokes,'geometric_endpoint_network':network,
         'owner_reviewed_visual_paths_NOT_physical_pipe_edges':reviewed['owner_reviewed_visual_paths'],
-        'engineering_approved_physical_connections':[]},
+        'engineering_approved_physical_connections':[],
+        'source_proven_geometry_only_relationship_candidates':geometry_relations},
         'provisional_graph_only':True,'publish_ready':False,
         'limits':['Only red CAD geometry is considered in this fast pilot',
         'Source-glyph audit includes inline valve bowties, rotated logic diamonds and notes, but no verified full symbol coverage'
