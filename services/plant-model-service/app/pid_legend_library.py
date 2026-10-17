@@ -137,6 +137,20 @@ def compile_library(pdf_bytes: bytes, manifest: dict[str, Any], output_folder: P
             if _area_of_intersection(glyph_box, label_box) > 0:
                 raise ValueError(f"{identity}: glyph overlaps label; crop is not clean")
             label = row.get("label_verbatim", "")
+            # Project-owner approval is a real recorded review, but it is
+            # deliberately not the second independent verification required
+            # to publish a library-wide approved glyph set.
+            owner_approval = row.get("owner_mapping_approval")
+            if owner_approval is not None:
+                if (not isinstance(owner_approval, dict) or
+                    owner_approval.get("status") != "approved" or
+                    not isinstance(owner_approval.get("reviewer_role"), str) or
+                    not owner_approval["reviewer_role"].strip() or
+                    not isinstance(owner_approval.get("review_date"), str) or
+                    not owner_approval["review_date"].strip() or
+                    not isinstance(owner_approval.get("evidence"), str) or
+                    not owner_approval["evidence"].strip()):
+                    raise ValueError(f"{identity}: invalid owner mapping approval evidence")
             status = row.get("review_status", "needs_review")
             if status not in CLASS_STATUSES:
                 raise ValueError(f"{identity}: invalid review status")
@@ -173,6 +187,7 @@ def compile_library(pdf_bytes: bytes, manifest: dict[str, Any], output_folder: P
                 "glyph_bbox_pdf_pt": glyph_box,
                 "label_bbox_pdf_pt": label_box,
                 "review_status": status,
+                "owner_mapping_approval": owner_approval,
                 "glyph_image": f"source_crops/{template_name}",
                 "label_image": f"source_crops/{identity}_label.png",
                 "glyph_ink_fraction": round(fraction, 5),
@@ -199,6 +214,9 @@ def compile_library(pdf_bytes: bytes, manifest: dict[str, Any], output_folder: P
                "legend_pages_in_inventory": len(coverage),
                "pages_approved_complete": sum(p["page_library_ready"] for p in coverage),
                "glyphs_reviewed_and_approved": len(approved),
+               "glyphs_project_owner_approved": sum(
+                   s.get("owner_mapping_approval", {}).get("status") == "approved"
+                   for s in symbols if isinstance(s.get("owner_mapping_approval"), dict)),
                "glyphs_pending_or_rejected": len(worklist),
                "independently_measured_detector_accuracy": None,
                "notice": "A library READY gate is NOT P&ID recognition or port-graph validation."}
