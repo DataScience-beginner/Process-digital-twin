@@ -114,3 +114,12 @@ def test_review_html_is_offline_and_does_not_self_approve(tmp_path):
     assert '"review_status": "needs_review"' in s
     assert "Export annotated inventory JSON" in s
     assert "https://" not in s  # no CDNs/external assets
+
+
+def test_approved_requires_explicit_class_code(tmp_path):
+    raw=fixture_pdf(); m=manifest(raw)
+    m["symbols"][0].update(review_status="approved",class_code="",
+        glyph_reviewer="engineer_A",label_reviewer="engineer_B",
+        glyph_isolated_confirmed=True,label_paired_confirmed=True)
+    with pytest.raises(ValueError,match="nonempty class"):
+        compile_library(raw,m,tmp_path)
