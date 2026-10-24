@@ -1,0 +1,43 @@
+name: E2 openpidl Compatibility Experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/openpidl-compatibility-e2
+    paths:
+      - 'experiments/openpidl/**'
+      - '.github/workflows/openpidl-compatibility.yml'
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project fixture and benchmark
+        uses: actions/checkout@v4
+      - name: Checkout upstream openpidl
+        uses: actions/checkout@v4
+        with:
+          repository: openpid-com/openpidl
+          path: upstream-openpidl
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install upstream library (without modifying platform dependencies)
+        run: python -m pip install -e ./upstream-openpidl
+      - name: Run actual openpidl benchmark
+        run: python experiments/openpidl/benchmark.py
+      - name: Run native PIDL port-aware adapter acceptance tests
+        run: python -m unittest discover -s experiments/openpidl -p "test_port_adapter.py" -v
+      - name: E2.3 actual DEXPI XML round-trip audit
+        run: python experiments/openpidl/dexpi_roundtrip.py
+      - name: Upload JSON findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpidl-compatibility-result
+          path: |
+            docs/forward-pid/benchmark-results/openpidl-e2-result.json
+            docs/forward-pid/benchmark-results/dexpi-roundtrip-e23.json
+          if-no-files-found: warn
