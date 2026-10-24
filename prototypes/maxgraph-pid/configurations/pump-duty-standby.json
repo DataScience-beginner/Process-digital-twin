@@ -1,0 +1,539 @@
+{
+  "schema_version": "1.0",
+  "configurations": [
+    {
+      "id": "TRANSFER_PUMP_DUTY_STANDBY_V1",
+      "version": "1.0",
+      "status": "approved",
+      "fixture_only": true,
+      "applies_to": {
+        "section_id": "FEED_TRANSFER",
+        "pump_type": "centrifugal_pump",
+        "vessel_type": "vertical_separator",
+        "pump_arrangement": "duty_standby",
+        "suction_isolation": "required_by_fixture_standard",
+        "phase": "liquid"
+      },
+      "source_roles": {
+        "vessel": "vertical_separator",
+        "duty_pump": "centrifugal_pump",
+        "standby_pump": "centrifugal_pump"
+      },
+      "generated_nodes": [
+        {
+          "id": "nz-v-1",
+          "tag": "V-101-LIQ",
+          "type": "process_nozzle",
+          "ports": [
+            {
+              "name": "IN",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUT",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "pipe-suc-1",
+          "tag": "SUCTION-HEADER",
+          "type": "piping_segment",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "header-suc",
+          "tag": "SUCTION-SPLIT",
+          "type": "junction",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUT-A",
+              "direction": "out",
+              "kind": "process"
+            },
+            {
+              "name": "OUT-B",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "valve-suc-a",
+          "tag": "XV-101A",
+          "type": "isolation_valve",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "pipe-suc-a",
+          "tag": "SUCTION-A",
+          "type": "piping_segment",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "nz-a-s",
+          "tag": "P-101A-SUC",
+          "type": "process_nozzle",
+          "ports": [
+            {
+              "name": "IN",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUT",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "nz-a-d",
+          "tag": "P-101A-DIS",
+          "type": "process_nozzle",
+          "ports": [
+            {
+              "name": "IN",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUT",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "valve-dis-a",
+          "tag": "XV-102A",
+          "type": "isolation_valve",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "pipe-dis-a",
+          "tag": "DISCHARGE-A",
+          "type": "piping_segment",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "valve-suc-b",
+          "tag": "XV-101B",
+          "type": "isolation_valve",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "pipe-suc-b",
+          "tag": "SUCTION-B",
+          "type": "piping_segment",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "nz-b-s",
+          "tag": "P-101B-SUC",
+          "type": "process_nozzle",
+          "ports": [
+            {
+              "name": "IN",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUT",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "nz-b-d",
+          "tag": "P-101B-DIS",
+          "type": "process_nozzle",
+          "ports": [
+            {
+              "name": "IN",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUT",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "valve-dis-b",
+          "tag": "XV-102B",
+          "type": "isolation_valve",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "pipe-dis-b",
+          "tag": "DISCHARGE-B",
+          "type": "piping_segment",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "header-dis",
+          "tag": "DISCHARGE-MERGE",
+          "type": "junction",
+          "ports": [
+            {
+              "name": "IN-A",
+              "direction": "out",
+              "kind": "process"
+            },
+            {
+              "name": "IN-B",
+              "direction": "out",
+              "kind": "process"
+            },
+            {
+              "name": "OUT",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        },
+        {
+          "id": "pipe-dis-header",
+          "tag": "DISCHARGE-HEADER",
+          "type": "piping_segment",
+          "ports": [
+            {
+              "name": "INLET",
+              "direction": "in",
+              "kind": "process"
+            },
+            {
+              "name": "OUTLET",
+              "direction": "out",
+              "kind": "process"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "stream_id": "str-101A",
+          "steps": [
+            [
+              "$inlet",
+              "OUT"
+            ],
+            [
+              "$vessel",
+              "FEED"
+            ],
+            [
+              "$vessel",
+              "LIQUID"
+            ],
+            [
+              "nz-v-1",
+              "IN"
+            ],
+            [
+              "nz-v-1",
+              "OUT"
+            ],
+            [
+              "pipe-suc-1",
+              "INLET"
+            ],
+            [
+              "pipe-suc-1",
+              "OUTLET"
+            ],
+            [
+              "header-suc",
+              "INLET"
+            ],
+            [
+              "header-suc",
+              "OUT-A"
+            ],
+            [
+              "valve-suc-a",
+              "INLET"
+            ],
+            [
+              "valve-suc-a",
+              "OUTLET"
+            ],
+            [
+              "pipe-suc-a",
+              "INLET"
+            ],
+            [
+              "pipe-suc-a",
+              "OUTLET"
+            ],
+            [
+              "nz-a-s",
+              "IN"
+            ],
+            [
+              "nz-a-s",
+              "OUT"
+            ],
+            [
+              "$duty_pump",
+              "SUCTION"
+            ]
+          ]
+        },
+        {
+          "stream_id": "str-102A",
+          "steps": [
+            [
+              "$duty_pump",
+              "SUCTION"
+            ],
+            [
+              "$duty_pump",
+              "DISCHARGE"
+            ],
+            [
+              "nz-a-d",
+              "IN"
+            ],
+            [
+              "nz-a-d",
+              "OUT"
+            ],
+            [
+              "valve-dis-a",
+              "INLET"
+            ],
+            [
+              "valve-dis-a",
+              "OUTLET"
+            ],
+            [
+              "pipe-dis-a",
+              "INLET"
+            ],
+            [
+              "pipe-dis-a",
+              "OUTLET"
+            ],
+            [
+              "header-dis",
+              "IN-A"
+            ],
+            [
+              "header-dis",
+              "OUT"
+            ],
+            [
+              "pipe-dis-header",
+              "INLET"
+            ],
+            [
+              "pipe-dis-header",
+              "OUTLET"
+            ],
+            [
+              "$outlet",
+              "IN"
+            ]
+          ]
+        },
+        {
+          "stream_id": "str-101B",
+          "steps": [
+            [
+              "header-suc",
+              "INLET"
+            ],
+            [
+              "header-suc",
+              "OUT-B"
+            ],
+            [
+              "valve-suc-b",
+              "INLET"
+            ],
+            [
+              "valve-suc-b",
+              "OUTLET"
+            ],
+            [
+              "pipe-suc-b",
+              "INLET"
+            ],
+            [
+              "pipe-suc-b",
+              "OUTLET"
+            ],
+            [
+              "nz-b-s",
+              "IN"
+            ],
+            [
+              "nz-b-s",
+              "OUT"
+            ],
+            [
+              "$standby_pump",
+              "SUCTION"
+            ]
+          ]
+        },
+        {
+          "stream_id": "str-102B",
+          "steps": [
+            [
+              "$standby_pump",
+              "SUCTION"
+            ],
+            [
+              "$standby_pump",
+              "DISCHARGE"
+            ],
+            [
+              "nz-b-d",
+              "IN"
+            ],
+            [
+              "nz-b-d",
+              "OUT"
+            ],
+            [
+              "valve-dis-b",
+              "INLET"
+            ],
+            [
+              "valve-dis-b",
+              "OUTLET"
+            ],
+            [
+              "pipe-dis-b",
+              "INLET"
+            ],
+            [
+              "pipe-dis-b",
+              "OUTLET"
+            ],
+            [
+              "header-dis",
+              "IN-B"
+            ],
+            [
+              "header-dis",
+              "OUT"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

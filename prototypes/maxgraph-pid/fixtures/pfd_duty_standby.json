@@ -1,0 +1,84 @@
+{
+  "fixture_id": "BENCH-002",
+  "event": {
+    "type": "pfd.approved",
+    "source_document_id": "PFD-BENCH-002",
+    "revision": "A",
+    "approval_status": "approved",
+    "human_prompt": null
+  },
+  "project_id": "BENCH-002",
+  "section_id": "FEED_TRANSFER",
+  "objects": [
+    {
+      "id": "eq-vessel-1",
+      "tag": "V-101",
+      "type": "vertical_separator"
+    },
+    {
+      "id": "eq-pump-a",
+      "tag": "P-101A",
+      "type": "centrifugal_pump",
+      "role": "duty_pump"
+    },
+    {
+      "id": "eq-pump-b",
+      "tag": "P-101B",
+      "type": "centrifugal_pump",
+      "role": "standby_pump"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "inlet-boundary-1",
+      "direction": "in"
+    },
+    {
+      "id": "outlet-boundary-1",
+      "direction": "out"
+    }
+  ],
+  "streams": [
+    {
+      "id": "str-101A",
+      "from": "eq-vessel-1",
+      "to": "eq-pump-a",
+      "phase": "liquid"
+    },
+    {
+      "id": "str-102A",
+      "from": "eq-pump-a",
+      "to": "outlet-boundary-1",
+      "phase": "liquid"
+    },
+    {
+      "id": "str-101B",
+      "from": "eq-vessel-1",
+      "to": "eq-pump-b",
+      "phase": "liquid"
+    },
+    {
+      "id": "str-102B",
+      "from": "eq-pump-b",
+      "to": "outlet-boundary-1",
+      "phase": "liquid"
+    }
+  ],
+  "requirements": {
+    "pump_arrangement": "duty_standby",
+    "suction_isolation": "required_by_fixture_standard"
+  },
+  "approved_configuration": {
+    "id": "TRANSFER_PUMP_DUTY_STANDBY_V1",
+    "version": "1.0",
+    "status": "approved"
+  },
+  "missing_engineering_data": [
+    "pressure",
+    "temperature",
+    "flow",
+    "density",
+    "pipe_size",
+    "pipe_specification"
+  ]
+}
