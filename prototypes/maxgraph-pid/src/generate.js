@@ -1,7 +1,9 @@
 import catalog from '../configurations/pump-transfer.json' with {type:'json'};
+import {expandConfiguredParallel} from './generate-parallel.js';
 const nodePorts= (ports)=> ports.map((name,i)=>({name,direction:i===0 && ports.length>1?'in':name==='IN' || name==='INLET' || name==='FEED' || name==='SUCTION'?'in':name==='OUT' || name==='OUTLET' || name==='LIQUID' || name==='DISCHARGE'?'out':name==='IN'?'in':'out',kind:'process'}));
 const key=(p)=>p.join(':');
 export function generateFromPfd(pfd,library=catalog) {
+  if(pfd.requirements?.pump_arrangement==='duty_standby')return expandConfiguredParallel(pfd);
   const exceptions=[];
   if(pfd.event?.type!=='pfd.approved'||pfd.event?.approval_status!=='approved')exceptions.push('PFD_NOT_APPROVED');
   const equipment=pfd.objects||[];
