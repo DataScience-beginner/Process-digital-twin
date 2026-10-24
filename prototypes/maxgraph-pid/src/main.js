@@ -73,9 +73,10 @@ elt('regenerate').addEventListener('click',()=>{
  model=result.graph;stage='pid';render();
  elt('activity').textContent='Approved PFD '+source.event.source_document_id+' Rev '+source.event.revision+' → matched '+result.matched_configuration.id+' v'+result.matched_configuration.version+' → generated '+model.nodes.length+' engineering objects and '+model.edges.length+' port connections. No human prompt.';
 });
-elt('add-valve').addEventListener('click',()=>{
- stage='pid';const result=insertDischargeValve(model);render();elt('activity').textContent=result.reason;
- if(result.ok)graph.setSelectionCell(cells.get('valve-dis-1'));
+elt('add-valve').addEventListener('click',async()=>{
+ stage='pid';const result=insertDischargeValve(model);
+ await render();elt('activity').textContent=result.reason;
+ if(result.ok&&cells.has('valve-dis-1'))graph.setSelectionCell(cells.get('valve-dis-1'));
 });
 elt('reset').addEventListener('click',()=>{model=createModel();stage='pid';render();elt('activity').textContent='Graph restored to source fixture.';});
 function fitCanvas(){const width=Math.max(lastLayout?.width||700,1),height=Math.max(lastLayout?.height||450,1);const factor=Math.max(0.15,Math.min(1.5,(graphElement.clientWidth-36)/width,(graphElement.clientHeight-36)/height));graph.zoomTo(factor);}
