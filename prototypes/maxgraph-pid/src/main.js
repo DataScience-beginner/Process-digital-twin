@@ -1,7 +1,7 @@
 import '@maxgraph/core/css/common.css';
 import './style.css';
 import {Graph,InternalEvent,constants} from '@maxgraph/core';
-import {source,createModel,generateProject,validate,insertDischargeValve,stageModel} from './engineering.js';
+import {source,createModel,generateProject,setScenario,scenarioName,validate,insertDischargeValve,stageModel} from './engineering.js';
 const elt=id=>document.getElementById(id);
 const graphElement=elt('graph');
 InternalEvent.disableContextMenu(graphElement);
@@ -16,7 +16,16 @@ const positions={
 'nz-p-s':[715,206,45,38],'eq-pump-1':[800,170,112,112],
 'nz-p-d':[950,207,45,38],'pipe-dis-1':[1030,205,83,43],
 'valve-dis-1':[1147,205,85,43],'outlet-boundary-1':[1260,205,104,43],
-feed:[80,165,190,85],transfer:[390,165,190,85],delivery:[700,165,190,85]
+'eq-pump-a':[825,92,110,105],'eq-pump-b':[825,375,110,105],
+ 'header-suc':[540,235,100,62],'header-dis':[1320,235,100,62],
+ 'nz-a-s':[735,122,45,40],'nz-a-d':[985,122,45,40],
+ 'nz-b-s':[735,402,45,40],'nz-b-d':[985,402,45,40],
+ 'pipe-suc-a':[652,120,75,42],'pipe-suc-b':[652,400,75,42],
+ 'valve-suc-a':[560,105,72,42],'valve-suc-b':[560,380,72,42],
+ 'pipe-dis-a':[1180,120,85,42],'pipe-dis-b':[1180,400,85,42],
+ 'valve-dis-a':[1080,120,75,42],'valve-dis-b':[1080,400,75,42],
+ 'pipe-dis-header':[1485,235,92,42],
+ feed:[80,165,190,85],transfer:[390,165,190,85],delivery:[700,165,190,85]
 };
 let model=createModel(),stage='pid',cells=new Map();
 const colors={equipment:'#dbeafe',valve:'#fde68a',nozzle:'#d1fae5',pipe:'#f1f5f9',boundary:'#e2e8f0'};
@@ -62,6 +71,10 @@ function select(cell){
  el.append(dump(n?{id:n.id,type:n.type,ports:n.ports,origin:n.origin,connected_edges:model.edges.filter(x=>x.from.object_id===id||x.to.object_id===id).map(x=>x.id)}:e));
 }
 graph.getSelectionModel().addListener('change',()=>select(graph.getSelectionCell()));
+for(const name of ['single','standby'])elt('scenario-'+name).addEventListener('click',()=>{
+ setScenario(name);model=createModel();stage='pid';render();
+ elt('activity').textContent='Approved '+source.event.source_document_id+' → '+model.configuration.id+' → '+model.nodes.length+' objects / '+model.edges.length+' connections. Both branches derived from data.';
+});
 for(const s of ['bfd','pfd','pid'])elt('stage-'+s).addEventListener('click',()=>{stage=s;render();elt('activity').textContent='Showing '+s.toUpperCase()+' representation from the same engineering fixture.';});
 elt('regenerate').addEventListener('click',()=>{
  const result=generateProject();
@@ -74,7 +87,7 @@ elt('add-valve').addEventListener('click',()=>{
  if(result.ok)graph.setSelectionCell(cells.get('valve-dis-1'));
 });
 elt('reset').addEventListener('click',()=>{model=createModel();stage='pid';render();elt('activity').textContent='Graph restored to source fixture.';});
-function fitCanvas(){const width=stage==='bfd'?920:1430;const factor=Math.max(0.25,Math.min(1,(graphElement.clientWidth-42)/width));graph.zoomTo(factor);}
+function fitCanvas(){const width=stage==='bfd'?920:scenarioName()==='duty_standby'?1660:1430;const factor=Math.max(0.25,Math.min(1,(graphElement.clientWidth-42)/width));graph.zoomTo(factor);}
 elt('zoom-in').onclick=()=>graph.zoomIn();elt('zoom-out').onclick=()=>graph.zoomOut();elt('fit').onclick=fitCanvas;
 elt('export').onclick=()=>{const blob=new Blob([JSON.stringify(model,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='BENCH-001-engineering-graph.json';a.click();URL.revokeObjectURL(u);};
 elt('engine').textContent='maxGraph '+constants.VERSION+' · Live canvas';
