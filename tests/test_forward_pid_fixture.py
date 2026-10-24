@@ -37,15 +37,22 @@ def validate_contract(source, graph):
             errors.append("missing_port")
             continue
         p_from, p_to = port_index[start], port_index[finish]
-        if p_from["direction"] not in ("out", "bidirectional"):
-            errors.append("bad_source_direction")
-        if p_to["direction"] not in ("in", "bidirectional"):
-            errors.append("bad_target_direction")
         if edge["kind"] == "internal_transition":
             if start[0] != finish[0]:
                 errors.append("cross_object_internal_transition")
-        elif edge["kind"] == "physical_connection" and start[0] == finish[0]:
-            errors.append("same_object_physical_connection")
+            if p_from["direction"] not in ("in", "bidirectional"):
+                errors.append("bad_internal_inlet_direction")
+            if p_to["direction"] not in ("out", "bidirectional"):
+                errors.append("bad_internal_outlet_direction")
+        elif edge["kind"] == "physical_connection":
+            if start[0] == finish[0]:
+                errors.append("same_object_physical_connection")
+            if p_from["direction"] not in ("out", "bidirectional"):
+                errors.append("bad_source_direction")
+            if p_to["direction"] not in ("in", "bidirectional"):
+                errors.append("bad_target_direction")
+        else:
+            errors.append("unknown_edge_kind")
         if edge.get("source_stream_id") not in graph["source_stream_ids"]:
             errors.append("unknown_source_stream")
         adjacency.setdefault(start, []).append(finish)
