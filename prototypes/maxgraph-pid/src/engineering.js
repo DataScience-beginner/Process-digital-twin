@@ -1,5 +1,5 @@
-import input from '../../../docs/forward-pid/fixtures/pfd_input.json';
-import expected from '../../../docs/forward-pid/fixtures/expected_graph.json';
+import input from '../../../docs/forward-pid/fixtures/pfd_input.json' with { type: 'json' };
+import expected from '../../../docs/forward-pid/fixtures/expected_graph.json' with { type: 'json' };
 export const source = input;
 export const baseline = expected;
 export function createModel(){return structuredClone(expected);}
