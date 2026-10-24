@@ -1,7 +1,7 @@
 import '@maxgraph/core/css/common.css';
 import './style.css';
 import {Graph,InternalEvent,constants} from '@maxgraph/core';
-import {source,createModel,validate,insertDischargeValve,stageModel} from './engineering.js';
+import {source,createModel,generateProject,validate,insertDischargeValve,stageModel} from './engineering.js';
 const elt=id=>document.getElementById(id);
 const graphElement=elt('graph');
 InternalEvent.disableContextMenu(graphElement);
@@ -50,7 +50,7 @@ function render(){
  const issues=validate(model);
  elt('status').textContent=model.nodes.length+' objects · '+model.edges.length+' directed connections · '+issues.length+' validation issues';
  document.querySelectorAll('.stage').forEach(b=>b.classList.toggle('active',b.id==='stage-'+stage));
- elt('lineage').textContent=JSON.stringify({source:source.event.source_document_id,revision:source.event.revision,configuration:model.configuration.id,simulation_streams:model.source_stream_ids,model_nodes:model.nodes.length,model_edges:model.edges.length},null,2);
+ elt('lineage').textContent=JSON.stringify({trigger:source.event.type,approval:source.event.approval_status,generated_from:'PFD + approved configuration registry',source:source.event.source_document_id,revision:source.event.revision,configuration:model.configuration.id,simulation_streams:model.source_stream_ids,model_nodes:model.nodes.length,model_edges:model.edges.length},null,2);
 }
 const dump=(v)=>{const p=document.createElement('pre');p.textContent=JSON.stringify(v,null,2);return p;};
 function select(cell){
@@ -63,6 +63,12 @@ function select(cell){
 }
 graph.getSelectionModel().addListener('change',()=>select(graph.getSelectionCell()));
 for(const s of ['bfd','pfd','pid'])elt('stage-'+s).addEventListener('click',()=>{stage=s;render();elt('activity').textContent='Showing '+s.toUpperCase()+' representation from the same engineering fixture.';});
+elt('regenerate').addEventListener('click',()=>{
+ const result=generateProject();
+ if(result.status!=='generated'){elt('activity').textContent='Engineering decision required: '+result.exceptions.join(', ');return;}
+ model=result.graph;stage='pid';render();
+ elt('activity').textContent='Approved PFD '+source.event.source_document_id+' Rev '+source.event.revision+' → matched '+result.matched_configuration.id+' v'+result.matched_configuration.version+' → generated '+model.nodes.length+' engineering objects and '+model.edges.length+' port connections. No human prompt.';
+});
 elt('add-valve').addEventListener('click',()=>{
  stage='pid';const result=insertDischargeValve(model);render();elt('activity').textContent=result.reason;
  if(result.ok)graph.setSelectionCell(cells.get('valve-dis-1'));
