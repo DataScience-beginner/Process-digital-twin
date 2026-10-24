@@ -6,6 +6,10 @@ test('real maxGraph displays P&ID and engineering edit',async({page})=>{
   await expect(page.locator('#engine')).toContainText('maxGraph');
   await expect(page.locator('#status')).toContainText('11 objects · 19 directed connections');
   await expect(page.locator('#graph svg')).toBeVisible();
+  const singleLayout=await page.evaluate(()=>window.__pidDemo.layout());
+  expect(singleLayout.source).toContain('ELK');
+  expect(Object.keys(singleLayout.positions)).toHaveLength(11);
+  expect(Object.values(singleLayout.positions).every(p=>p.every(Number.isFinite))).toBe(true);
   await page.getByRole('button',{name:'Generate P&ID from approved PFD'}).click();
   await expect(page.locator('#activity')).toContainText('matched TRANSFER_PUMP_SUCTION_V1');
   await expect(page.locator('#status')).toContainText('11 objects · 19 directed connections');
@@ -21,6 +25,10 @@ test('real maxGraph displays P&ID and engineering edit',async({page})=>{
   await page.getByRole('button',{name:'Duty / standby (P-101A/B)'}).click();
   await expect(page.locator('#status')).toContainText('22 objects');
   await expect(page.locator('#activity')).toContainText('TRANSFER_PUMP_DUTY_STANDBY_V1');
+  const standbyLayout=await page.evaluate(()=>window.__pidDemo.layout());
+  expect(Object.keys(standbyLayout.positions)).toHaveLength(22);
+  const pumpA=standbyLayout.positions['eq-pump-a'],pumpB=standbyLayout.positions['eq-pump-b'];
+  expect(pumpA[0]+pumpA[2]<=pumpB[0]||pumpB[0]+pumpB[2]<=pumpA[0]||pumpA[1]+pumpA[3]<=pumpB[1]||pumpB[1]+pumpB[3]<=pumpA[1]).toBe(true);
   await page.screenshot({path:'test-results/maxgraph-duty-standby.png',fullPage:true});
   await page.getByRole('button',{name:'2 · PFD'}).click();
   await expect(page.locator('#view-label')).toContainText('PFD');
