@@ -28,6 +28,8 @@ jobs:
         run: python -m pip install -e ./upstream-openpidl
       - name: Run actual openpidl benchmark
         run: python experiments/openpidl/benchmark.py
+      - name: Run native PIDL port-aware adapter acceptance tests
+        run: python -m unittest discover -s experiments/openpidl -p "test_port_adapter.py" -v
       - name: Upload JSON findings
         if: always()
         uses: actions/upload-artifact@v4
