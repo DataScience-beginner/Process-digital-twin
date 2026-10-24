@@ -40,7 +40,7 @@ export function expandConfiguredParallel(pfd, library=dutyStandby) {
   if(new Set(combined.map(n=>n.id)).size!==combined.length)return reject('DUPLICATE_NODE_ID');
   let nodes;
   try {
-    nodes=combined.map(n=>({...n,ports:n.ports.map(p=>typeof p==='string'?makePort(p):p),origin:{source_id:sourceNodes.some(s=>s.id===n.id)?n.id:config.id,source_revision:pfd.event.revision}}));
+    nodes=combined.map(n=>({...n,ports:n.ports.map(p=>makePort(typeof p==='string'?p:p.name)),origin:{source_id:sourceNodes.some(s=>s.id===n.id)?n.id:config.id,source_revision:pfd.event.revision}}));
   }catch{return reject('CONFIGURATION_PORT_SCHEMA_INVALID');}
   const byId=new Map(nodes.map(n=>[n.id,n]));
   const edges=[],dedup=new Map();
