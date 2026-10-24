@@ -1,0 +1,186 @@
+{
+  "schema_version": "1.0",
+  "configurations": [
+    {
+      "id": "TRANSFER_PUMP_SUCTION_V1",
+      "version": "1.0",
+      "status": "approved",
+      "fixture_only": true,
+      "applies_to": {
+        "section_id": "FEED_TRANSFER",
+        "pump_type": "centrifugal_pump",
+        "vessel_type": "vertical_separator",
+        "pump_arrangement": "single",
+        "suction_isolation": "required_by_fixture_standard",
+        "phase": "liquid"
+      },
+      "nodes": [
+        {
+          "id": "nz-v-1",
+          "tag": "V-101-LIQ",
+          "type": "process_nozzle",
+          "ports": [
+            "IN",
+            "OUT"
+          ],
+          "parent": "eq-vessel-1"
+        },
+        {
+          "id": "pipe-suc-1",
+          "tag": "UNASSIGNED-SUC-A",
+          "type": "piping_segment",
+          "ports": [
+            "INLET",
+            "OUTLET"
+          ]
+        },
+        {
+          "id": "valve-suc-1",
+          "tag": "XV-101",
+          "type": "isolation_valve",
+          "ports": [
+            "INLET",
+            "OUTLET"
+          ]
+        },
+        {
+          "id": "pipe-suc-2",
+          "tag": "UNASSIGNED-SUC-B",
+          "type": "piping_segment",
+          "ports": [
+            "INLET",
+            "OUTLET"
+          ]
+        },
+        {
+          "id": "nz-p-s",
+          "tag": "P-101-SUC",
+          "type": "process_nozzle",
+          "ports": [
+            "IN",
+            "OUT"
+          ],
+          "parent": "eq-pump-1"
+        },
+        {
+          "id": "nz-p-d",
+          "tag": "P-101-DIS",
+          "type": "process_nozzle",
+          "ports": [
+            "IN",
+            "OUT"
+          ],
+          "parent": "eq-pump-1"
+        },
+        {
+          "id": "pipe-dis-1",
+          "tag": "UNASSIGNED-DIS",
+          "type": "piping_segment",
+          "ports": [
+            "INLET",
+            "OUTLET"
+          ]
+        }
+      ],
+      "port_assignments": {
+        "eq-vessel-1": [
+          "FEED",
+          "LIQUID"
+        ],
+        "eq-pump-1": [
+          "SUCTION",
+          "DISCHARGE"
+        ],
+        "inlet-boundary-1": [
+          "OUT"
+        ],
+        "outlet-boundary-1": [
+          "IN"
+        ]
+      },
+      "path": [
+        [
+          "inlet-boundary-1",
+          "OUT"
+        ],
+        [
+          "eq-vessel-1",
+          "FEED"
+        ],
+        [
+          "eq-vessel-1",
+          "LIQUID"
+        ],
+        [
+          "nz-v-1",
+          "IN"
+        ],
+        [
+          "nz-v-1",
+          "OUT"
+        ],
+        [
+          "pipe-suc-1",
+          "INLET"
+        ],
+        [
+          "pipe-suc-1",
+          "OUTLET"
+        ],
+        [
+          "valve-suc-1",
+          "INLET"
+        ],
+        [
+          "valve-suc-1",
+          "OUTLET"
+        ],
+        [
+          "pipe-suc-2",
+          "INLET"
+        ],
+        [
+          "pipe-suc-2",
+          "OUTLET"
+        ],
+        [
+          "nz-p-s",
+          "IN"
+        ],
+        [
+          "nz-p-s",
+          "OUT"
+        ],
+        [
+          "eq-pump-1",
+          "SUCTION"
+        ],
+        [
+          "eq-pump-1",
+          "DISCHARGE"
+        ],
+        [
+          "nz-p-d",
+          "IN"
+        ],
+        [
+          "nz-p-d",
+          "OUT"
+        ],
+        [
+          "pipe-dis-1",
+          "INLET"
+        ],
+        [
+          "pipe-dis-1",
+          "OUTLET"
+        ],
+        [
+          "outlet-boundary-1",
+          "IN"
+        ]
+      ],
+      "stream_break_at": "eq-pump-1:SUCTION"
+    }
+  ]
+}
