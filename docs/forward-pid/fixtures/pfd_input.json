@@ -1,0 +1,72 @@
+{
+  "fixture_id": "BENCH-001",
+  "event": {
+    "type": "pfd.approved",
+    "source_document_id": "PFD-BENCH-001",
+    "revision": "A",
+    "approval_status": "approved",
+    "human_prompt": null
+  },
+  "project_id": "BENCH-001",
+  "section_id": "FEED_TRANSFER",
+  "case_id": "NORMAL",
+  "objects": [
+    {
+      "id": "eq-vessel-1",
+      "tag": "V-101",
+      "type": "vertical_separator"
+    },
+    {
+      "id": "eq-pump-1",
+      "tag": "P-101",
+      "type": "centrifugal_pump"
+    }
+  ],
+  "interfaces": [
+    {
+      "id": "inlet-boundary-1",
+      "name": "upstream_feed",
+      "direction": "in"
+    },
+    {
+      "id": "outlet-boundary-1",
+      "name": "downstream_header",
+      "direction": "out"
+    }
+  ],
+  "streams": [
+    {
+      "id": "str-101",
+      "from": "eq-vessel-1",
+      "to": "eq-pump-1",
+      "phase": "liquid"
+    },
+    {
+      "id": "str-102",
+      "from": "eq-pump-1",
+      "to": "outlet-boundary-1",
+      "phase": "liquid"
+    }
+  ],
+  "requirements": {
+    "pump_arrangement": "single",
+    "suction_isolation": "required_by_fixture_standard"
+  },
+  "approved_configuration": {
+    "id": "TRANSFER_PUMP_SUCTION_V1",
+    "version": "1.0",
+    "status": "approved",
+    "applicability": {
+      "section_id": "FEED_TRANSFER",
+      "pump_arrangement": "single"
+    }
+  },
+  "missing_engineering_data": [
+    "pressure",
+    "temperature",
+    "flow",
+    "density",
+    "pipe_size",
+    "pipe_specification"
+  ]
+}
