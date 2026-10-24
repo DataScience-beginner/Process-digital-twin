@@ -1,0 +1,38 @@
+name: E3 maxGraph workspace browser validation
+on:
+  push:
+    branches:
+      - feature/maxgraph-forward-pid-workspace
+    paths:
+      - 'prototypes/maxgraph-pid/**'
+      - 'docs/forward-pid/fixtures/**'
+      - '.github/workflows/maxgraph-workspace.yml'
+  workflow_dispatch:
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prototypes/maxgraph-pid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install existing open-source maxGraph and test tooling
+        run: npm install --no-audit --no-fund
+      - name: Run engineering graph operation tests
+        run: npm test
+      - name: Build real maxGraph application
+        run: npm run build
+      - name: Install Chromium for browser verification
+        run: npx playwright install --with-deps chromium
+      - name: Validate actual rendered canvas and interactions
+        run: npm run test:browser
+      - name: Publish browser test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maxgraph-browser-results
+          path: prototypes/maxgraph-pid/test-results
+          if-no-files-found: ignore
