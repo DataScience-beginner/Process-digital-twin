@@ -45,10 +45,10 @@ async function render(){
   });
  });
  fitCanvas();
- elt('activity').textContent='Auto layout complete · '+model.nodes.length+' engineering objects · ELK orthogonal routing.';
+
  elt('view-label').textContent=stage==='bfd'?'BFD — functional modules':stage==='pfd'?'PFD — simulation streams':'P&ID — detailed connections';
  const issues=validate(model);
- elt('status').textContent=model.nodes.length+' objects · '+model.edges.length+' directed connections · '+issues.length+' validation issues';
+ elt('status').textContent=model.nodes.length+' objects · '+model.edges.length+' directed connections · '+issues.length+' validation issues · ELK auto layout';
  document.querySelectorAll('.stage').forEach(b=>b.classList.toggle('active',b.id==='stage-'+stage));
  elt('lineage').textContent=JSON.stringify({trigger:source.event.type,approval:source.event.approval_status,generated_from:'PFD + approved configuration registry',source:source.event.source_document_id,revision:source.event.revision,configuration:model.configuration.id,simulation_streams:model.source_stream_ids,model_nodes:model.nodes.length,model_edges:model.edges.length},null,2);
 }
