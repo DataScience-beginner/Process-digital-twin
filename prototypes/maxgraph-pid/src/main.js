@@ -1,6 +1,7 @@
 import '@maxgraph/core/css/common.css';
 import './style.css';
 import {Graph,InternalEvent,constants} from '@maxgraph/core';
+import {computeLayout} from './layout.js';
 import {source,createModel,generateProject,setScenario,scenarioName,validate,insertDischargeValve,stageModel} from './engineering.js';
 const elt=id=>document.getElementById(id);
 const graphElement=elt('graph');
@@ -9,25 +10,7 @@ const graph=new Graph(graphElement);
 graph.setPanning(true);
 graph.setConnectable(false);
 graph.setCellsEditable(false);
-const positions={
-'inlet-boundary-1':[25,200,85,45],'eq-vessel-1':[145,130,105,165],
-'nz-v-1':[285,206,45,38],'pipe-suc-1':[365,205,86,43],
-'valve-suc-1':[480,205,85,43],'pipe-suc-2':[595,205,86,43],
-'nz-p-s':[715,206,45,38],'eq-pump-1':[800,170,112,112],
-'nz-p-d':[950,207,45,38],'pipe-dis-1':[1030,205,83,43],
-'valve-dis-1':[1147,205,85,43],'outlet-boundary-1':[1260,205,104,43],
-'eq-pump-a':[825,92,110,105],'eq-pump-b':[825,375,110,105],
- 'header-suc':[540,235,100,62],'header-dis':[1320,235,100,62],
- 'nz-a-s':[735,122,45,40],'nz-a-d':[985,122,45,40],
- 'nz-b-s':[735,402,45,40],'nz-b-d':[985,402,45,40],
- 'pipe-suc-a':[652,120,75,42],'pipe-suc-b':[652,400,75,42],
- 'valve-suc-a':[560,105,72,42],'valve-suc-b':[560,380,72,42],
- 'pipe-dis-a':[1180,120,85,42],'pipe-dis-b':[1180,400,85,42],
- 'valve-dis-a':[1080,120,75,42],'valve-dis-b':[1080,400,75,42],
- 'pipe-dis-header':[1485,235,92,42],
- feed:[80,165,190,85],transfer:[390,165,190,85],delivery:[700,165,190,85]
-};
-let model=createModel(),stage='pid',cells=new Map();
+let model=createModel(),stage='pid',cells=new Map(),lastLayout=null,renderToken=0;
 const colors={equipment:'#dbeafe',valve:'#fde68a',nozzle:'#d1fae5',pipe:'#f1f5f9',boundary:'#e2e8f0'};
 const styleFor=n=>{
  let fill=colors.boundary,shape='rounded';
@@ -40,12 +23,19 @@ const styleFor=n=>{
  return {shape,fillColor:fill,strokeColor:'#334155',strokeWidth:1.7,fontColor:'#0f172a',fontSize:13,whiteSpace:'wrap',rounded:true,arcSize:16,align:'center',verticalAlign:'middle'};
 };
 const label=n=>n.type==='piping_segment'?n.id.replace('pipe-','Line '):n.tag;
-function render(){
+async function render(){
+ const token=++renderToken;
+ const subset=stageModel(stage,model);
+ elt('activity').textContent='Computing ELK layout from graph topology…';
+ let layout;
+ try{layout=await computeLayout(subset);}catch(error){if(token===renderToken)elt('activity').textContent='Layout failed: '+error.message;throw error;}
+ if(token!==renderToken)return;
+ lastLayout=layout;
  graph.removeCells(graph.getChildCells(graph.getDefaultParent(),true,true),true);
- cells=new Map(); const subset=stageModel(stage,model);
+ cells=new Map();
  graph.batchUpdate(()=>{
   subset.nodes.forEach((n,i)=>{
-    const [x,y,w,h]=positions[n.id]||[130+i*112,300,90,45];
+    const [x,y,w,h]=layout.positions[n.id];
     const cell=graph.insertVertex({id:n.id,value:label(n),position:[x,y],size:[w,h],style:styleFor(n)});
     cells.set(n.id,cell);
   });
@@ -55,6 +45,7 @@ function render(){
   });
  });
  fitCanvas();
+ elt('activity').textContent='Auto layout complete · '+model.nodes.length+' engineering objects · ELK orthogonal routing.';
  elt('view-label').textContent=stage==='bfd'?'BFD — functional modules':stage==='pfd'?'PFD — simulation streams':'P&ID — detailed connections';
  const issues=validate(model);
  elt('status').textContent=model.nodes.length+' objects · '+model.edges.length+' directed connections · '+issues.length+' validation issues';
@@ -87,8 +78,8 @@ elt('add-valve').addEventListener('click',()=>{
  if(result.ok)graph.setSelectionCell(cells.get('valve-dis-1'));
 });
 elt('reset').addEventListener('click',()=>{model=createModel();stage='pid';render();elt('activity').textContent='Graph restored to source fixture.';});
-function fitCanvas(){const width=stage==='bfd'?920:scenarioName()==='duty_standby'?1660:1430;const factor=Math.max(0.25,Math.min(1,(graphElement.clientWidth-42)/width));graph.zoomTo(factor);}
+function fitCanvas(){const width=Math.max(lastLayout?.width||700,1),height=Math.max(lastLayout?.height||450,1);const factor=Math.max(0.15,Math.min(1.5,(graphElement.clientWidth-36)/width,(graphElement.clientHeight-36)/height));graph.zoomTo(factor);}
 elt('zoom-in').onclick=()=>graph.zoomIn();elt('zoom-out').onclick=()=>graph.zoomOut();elt('fit').onclick=fitCanvas;
 elt('export').onclick=()=>{const blob=new Blob([JSON.stringify(model,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='BENCH-001-engineering-graph.json';a.click();URL.revokeObjectURL(u);};
-elt('engine').textContent='maxGraph '+constants.VERSION+' · Live canvas';
-render();window.__pidDemo={model:()=>model,graph,stage:()=>stage,validate:()=>validate(model)};
+elt('engine').textContent='maxGraph '+constants.VERSION+' + ELK · Auto layout';
+render();window.__pidDemo={model:()=>model,graph,stage:()=>stage,layout:()=>lastLayout,validate:()=>validate(model)};
