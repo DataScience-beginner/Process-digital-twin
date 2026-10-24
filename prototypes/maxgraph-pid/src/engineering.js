@@ -1,6 +1,9 @@
 import input from '../../../docs/forward-pid/fixtures/pfd_input.json' with { type: 'json' };
+import standby from '../fixtures/pfd_duty_standby.json' with {type:'json'};
 import {generateFromPfd} from './generate.js';
-export const source = input;
+export let source = input;
+export function setScenario(name){source=name==='standby'?standby:input;return source;}
+export function scenarioName(){return source.requirements.pump_arrangement;}
 export function generateProject(pfd=source){return generateFromPfd(pfd);}
 export function createModel(){const result=generateProject(); if(result.status!=='generated')throw new Error('Configuration selection failed: '+result.exceptions.join(', '));return result.graph;}
 export function validate(model){
@@ -38,6 +41,6 @@ export function insertDischargeValve(model){
 }
 export function stageModel(stage,model){
  if(stage==='pid')return {nodes:model.nodes,edges:model.edges.filter(e=>e.kind==='physical_connection')};
- if(stage==='pfd')return {nodes:model.nodes.filter(n=>['eq-vessel-1','eq-pump-1','outlet-boundary-1'].includes(n.id)),edges:[{id:'pfd-stream-101',from:{object_id:'eq-vessel-1'},to:{object_id:'eq-pump-1'},source_stream_id:'str-101'},{id:'pfd-stream-102',from:{object_id:'eq-pump-1'},to:{object_id:'outlet-boundary-1'},source_stream_id:'str-102'}]};
+ if(stage==='pfd'){const sourceIds=new Set([...source.objects.map(x=>x.id),source.interfaces.at(-1).id]);return {nodes:model.nodes.filter(n=>sourceIds.has(n.id)),edges:source.streams.map(s=>({id:'pfd-'+s.id,from:{object_id:s.from},to:{object_id:s.to},source_stream_id:s.id}))};}
  return {nodes:[{id:'feed',tag:'Feed preparation',type:'functional_block',ports:[]},{id:'transfer',tag:'Liquid transfer',type:'functional_block',ports:[]},{id:'delivery',tag:'Downstream',type:'functional_block',ports:[]}],edges:[{id:'bfd-1',from:{object_id:'feed'},to:{object_id:'transfer'}},{id:'bfd-2',from:{object_id:'transfer'},to:{object_id:'delivery'}}]};
 }
