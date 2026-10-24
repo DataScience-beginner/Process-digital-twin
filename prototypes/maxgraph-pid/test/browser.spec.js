@@ -1,5 +1,7 @@
 import {test,expect} from '@playwright/test';
 test('real maxGraph displays P&ID and engineering edit',async({page})=>{
+  page.on('pageerror', error => console.error('PAGE_JS_ERROR:', error.stack || error.message));
+  page.on('console', msg => { if(msg.type()==='error') console.error('BROWSER_CONSOLE:', msg.text()); });
   await page.goto('/');
   await expect(page.locator('#engine')).toContainText('maxGraph');
   await expect(page.locator('#status')).toContainText('11 objects · 19 directed connections');
