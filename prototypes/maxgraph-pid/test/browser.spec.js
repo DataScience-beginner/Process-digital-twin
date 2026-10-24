@@ -6,6 +6,9 @@ test('real maxGraph displays P&ID and engineering edit',async({page})=>{
   await expect(page.locator('#engine')).toContainText('maxGraph');
   await expect(page.locator('#status')).toContainText('11 objects · 19 directed connections');
   await expect(page.locator('#graph svg')).toBeVisible();
+  await page.getByRole('button',{name:'Generate P&ID from approved PFD'}).click();
+  await expect(page.locator('#activity')).toContainText('matched TRANSFER_PUMP_SUCTION_V1');
+  await expect(page.locator('#status')).toContainText('11 objects · 19 directed connections');
   await page.screenshot({path:'test-results/maxgraph-pid-before.png',fullPage:true});
   await page.getByRole('button',{name:'2 · PFD'}).click();
   await expect(page.locator('#view-label')).toContainText('PFD');
