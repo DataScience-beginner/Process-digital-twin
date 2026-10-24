@@ -11,7 +11,8 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@maxgraph/core": "^0.22.0"
+    "@maxgraph/core": "^0.22.0",
+    "elkjs": "^0.10.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
