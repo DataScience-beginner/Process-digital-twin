@@ -1,0 +1,22 @@
+name: Forward P&ID Fixture Contract
+on:
+  push:
+    paths:
+      - 'docs/forward-pid/**'
+      - 'tests/test_forward_pid_fixture.py'
+      - '.github/workflows/forward-pid-fixture.yml'
+  pull_request:
+    paths:
+      - 'docs/forward-pid/**'
+      - 'tests/test_forward_pid_fixture.py'
+      - '.github/workflows/forward-pid-fixture.yml'
+jobs:
+  fixture-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate PFD-to-P&ID graph fixture
+        run: python -m unittest discover -s tests -p 'test_forward_pid_fixture.py' -v

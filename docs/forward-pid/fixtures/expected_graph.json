@@ -1,0 +1,516 @@
+{
+  "fixture_id": "BENCH-001",
+  "status": "proposed_validation_pending",
+  "configuration": {
+    "id": "TRANSFER_PUMP_SUCTION_V1",
+    "version": "1.0",
+    "approval_basis": "approved_fixture_standard"
+  },
+  "nodes": [
+    {
+      "id": "inlet-boundary-1",
+      "tag": "UPSTREAM",
+      "type": "boundary",
+      "ports": [
+        {
+          "name": "OUT",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "inlet-boundary-1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "eq-vessel-1",
+      "tag": "V-101",
+      "type": "vertical_separator",
+      "ports": [
+        {
+          "name": "FEED",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "LIQUID",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "eq-vessel-1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "nz-v-1",
+      "tag": "V-101-LIQ",
+      "type": "process_nozzle",
+      "ports": [
+        {
+          "name": "IN",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUT",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "pipe-suc-1",
+      "tag": "UNASSIGNED-SUC-A",
+      "type": "piping_segment",
+      "ports": [
+        {
+          "name": "INLET",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUTLET",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "valve-suc-1",
+      "tag": "XV-101",
+      "type": "isolation_valve",
+      "ports": [
+        {
+          "name": "INLET",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUTLET",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "pipe-suc-2",
+      "tag": "UNASSIGNED-SUC-B",
+      "type": "piping_segment",
+      "ports": [
+        {
+          "name": "INLET",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUTLET",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "nz-p-s",
+      "tag": "P-101-SUC",
+      "type": "process_nozzle",
+      "ports": [
+        {
+          "name": "IN",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUT",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "eq-pump-1",
+      "tag": "P-101",
+      "type": "centrifugal_pump",
+      "ports": [
+        {
+          "name": "SUCTION",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "DISCHARGE",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "eq-pump-1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "nz-p-d",
+      "tag": "P-101-DIS",
+      "type": "process_nozzle",
+      "ports": [
+        {
+          "name": "IN",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUT",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "pipe-dis-1",
+      "tag": "UNASSIGNED-DIS",
+      "type": "piping_segment",
+      "ports": [
+        {
+          "name": "INLET",
+          "direction": "in",
+          "kind": "process"
+        },
+        {
+          "name": "OUTLET",
+          "direction": "out",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "TRANSFER_PUMP_SUCTION_V1",
+        "source_revision": "A"
+      }
+    },
+    {
+      "id": "outlet-boundary-1",
+      "tag": "DOWNSTREAM",
+      "type": "boundary",
+      "ports": [
+        {
+          "name": "IN",
+          "direction": "in",
+          "kind": "process"
+        }
+      ],
+      "origin": {
+        "source_id": "outlet-boundary-1",
+        "source_revision": "A"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-01",
+      "from": {
+        "object_id": "inlet-boundary-1",
+        "port": "OUT"
+      },
+      "to": {
+        "object_id": "eq-vessel-1",
+        "port": "FEED"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-02",
+      "from": {
+        "object_id": "eq-vessel-1",
+        "port": "FEED"
+      },
+      "to": {
+        "object_id": "eq-vessel-1",
+        "port": "LIQUID"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-03",
+      "from": {
+        "object_id": "eq-vessel-1",
+        "port": "LIQUID"
+      },
+      "to": {
+        "object_id": "nz-v-1",
+        "port": "IN"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-04",
+      "from": {
+        "object_id": "nz-v-1",
+        "port": "IN"
+      },
+      "to": {
+        "object_id": "nz-v-1",
+        "port": "OUT"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-05",
+      "from": {
+        "object_id": "nz-v-1",
+        "port": "OUT"
+      },
+      "to": {
+        "object_id": "pipe-suc-1",
+        "port": "INLET"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-06",
+      "from": {
+        "object_id": "pipe-suc-1",
+        "port": "INLET"
+      },
+      "to": {
+        "object_id": "pipe-suc-1",
+        "port": "OUTLET"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-07",
+      "from": {
+        "object_id": "pipe-suc-1",
+        "port": "OUTLET"
+      },
+      "to": {
+        "object_id": "valve-suc-1",
+        "port": "INLET"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-08",
+      "from": {
+        "object_id": "valve-suc-1",
+        "port": "INLET"
+      },
+      "to": {
+        "object_id": "valve-suc-1",
+        "port": "OUTLET"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-09",
+      "from": {
+        "object_id": "valve-suc-1",
+        "port": "OUTLET"
+      },
+      "to": {
+        "object_id": "pipe-suc-2",
+        "port": "INLET"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-10",
+      "from": {
+        "object_id": "pipe-suc-2",
+        "port": "INLET"
+      },
+      "to": {
+        "object_id": "pipe-suc-2",
+        "port": "OUTLET"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-11",
+      "from": {
+        "object_id": "pipe-suc-2",
+        "port": "OUTLET"
+      },
+      "to": {
+        "object_id": "nz-p-s",
+        "port": "IN"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-12",
+      "from": {
+        "object_id": "nz-p-s",
+        "port": "IN"
+      },
+      "to": {
+        "object_id": "nz-p-s",
+        "port": "OUT"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-13",
+      "from": {
+        "object_id": "nz-p-s",
+        "port": "OUT"
+      },
+      "to": {
+        "object_id": "eq-pump-1",
+        "port": "SUCTION"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-101"
+    },
+    {
+      "id": "edge-14",
+      "from": {
+        "object_id": "eq-pump-1",
+        "port": "SUCTION"
+      },
+      "to": {
+        "object_id": "eq-pump-1",
+        "port": "DISCHARGE"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-102"
+    },
+    {
+      "id": "edge-15",
+      "from": {
+        "object_id": "eq-pump-1",
+        "port": "DISCHARGE"
+      },
+      "to": {
+        "object_id": "nz-p-d",
+        "port": "IN"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-102"
+    },
+    {
+      "id": "edge-16",
+      "from": {
+        "object_id": "nz-p-d",
+        "port": "IN"
+      },
+      "to": {
+        "object_id": "nz-p-d",
+        "port": "OUT"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-102"
+    },
+    {
+      "id": "edge-17",
+      "from": {
+        "object_id": "nz-p-d",
+        "port": "OUT"
+      },
+      "to": {
+        "object_id": "pipe-dis-1",
+        "port": "INLET"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-102"
+    },
+    {
+      "id": "edge-18",
+      "from": {
+        "object_id": "pipe-dis-1",
+        "port": "INLET"
+      },
+      "to": {
+        "object_id": "pipe-dis-1",
+        "port": "OUTLET"
+      },
+      "kind": "internal_transition",
+      "source_stream_id": "str-102"
+    },
+    {
+      "id": "edge-19",
+      "from": {
+        "object_id": "pipe-dis-1",
+        "port": "OUTLET"
+      },
+      "to": {
+        "object_id": "outlet-boundary-1",
+        "port": "IN"
+      },
+      "kind": "physical_connection",
+      "source_stream_id": "str-102"
+    }
+  ],
+  "expected_path": [
+    "inlet-boundary-1",
+    "eq-vessel-1",
+    "nz-v-1",
+    "pipe-suc-1",
+    "valve-suc-1",
+    "pipe-suc-2",
+    "nz-p-s",
+    "eq-pump-1",
+    "nz-p-d",
+    "pipe-dis-1",
+    "outlet-boundary-1"
+  ],
+  "source_stream_ids": [
+    "str-101",
+    "str-102"
+  ],
+  "unknown_fields": [
+    "pressure",
+    "temperature",
+    "flow",
+    "density",
+    "pipe_size",
+    "pipe_specification"
+  ],
+  "engineering_values": {
+    "pressure": null,
+    "temperature": null,
+    "flow": null,
+    "density": null,
+    "pipe_size": null,
+    "pipe_specification": null
+  },
+  "drawing_geometry": null,
+  "required_human_prompts": 0
+}
