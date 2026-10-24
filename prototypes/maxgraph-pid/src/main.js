@@ -45,7 +45,7 @@ function render(){
    if(a&&b)graph.insertEdge({id:e.id,value:'',source:a,target:b,style:{edgeStyle:'orthogonalEdgeStyle',strokeColor:'#0d9488',strokeWidth:2,endArrow:'block',endSize:7,rounded:true}});
   });
  });
- graph.fit(30);
+ fitCanvas();
  elt('view-label').textContent=stage==='bfd'?'BFD — functional modules':stage==='pfd'?'PFD — simulation streams':'P&ID — detailed connections';
  const issues=validate(model);
  elt('status').textContent=model.nodes.length+' objects · '+model.edges.length+' directed connections · '+issues.length+' validation issues';
@@ -68,7 +68,8 @@ elt('add-valve').addEventListener('click',()=>{
  if(result.ok)graph.setSelectionCell(cells.get('valve-dis-1'));
 });
 elt('reset').addEventListener('click',()=>{model=createModel();stage='pid';render();elt('activity').textContent='Graph restored to source fixture.';});
-elt('zoom-in').onclick=()=>graph.zoomIn();elt('zoom-out').onclick=()=>graph.zoomOut();elt('fit').onclick=()=>graph.fit(30);
+function fitCanvas(){const width=stage==='bfd'?920:1430;const factor=Math.max(0.25,Math.min(1,(graphElement.clientWidth-42)/width));graph.zoomTo(factor);}
+elt('zoom-in').onclick=()=>graph.zoomIn();elt('zoom-out').onclick=()=>graph.zoomOut();elt('fit').onclick=fitCanvas;
 elt('export').onclick=()=>{const blob=new Blob([JSON.stringify(model,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='BENCH-001-engineering-graph.json';a.click();URL.revokeObjectURL(u);};
 elt('engine').textContent='maxGraph '+constants.VERSION+' · Live canvas';
 render();window.__pidDemo={model:()=>model,graph,stage:()=>stage,validate:()=>validate(model)};
