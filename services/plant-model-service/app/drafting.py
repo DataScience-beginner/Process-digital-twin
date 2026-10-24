@@ -108,6 +108,10 @@ SYMBOLS: dict[str, SymbolMaster] = {
             "SIGNAL_OUT": (0.5, 0.0),
         },
     ),
+    "piping_segment": SymbolMaster(
+        key="piping_segment", width=56, height=8,
+        anchors={"INLET": (0.0, 0.5), "OUTLET": (1.0, 0.5)},
+    ),
     "junction.branch": SymbolMaster(
         key="junction.branch",
         width=8,
@@ -128,6 +132,8 @@ SYMBOLS: dict[str, SymbolMaster] = {
 
 
 def symbol_key(obj) -> str:
+    if obj.category == "piping_segment":
+        return "piping_segment"
     if obj.category == "equipment":
         return f"equipment.{obj.equipment_type.value}"
     if obj.category == "nozzle":
