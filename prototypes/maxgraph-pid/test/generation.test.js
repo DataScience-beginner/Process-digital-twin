@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import source from '../../../../docs/forward-pid/fixtures/pfd_input.json' with {type:'json'};
-import reference from '../../../../docs/forward-pid/fixtures/expected_graph.json' with {type:'json'};
+import source from '../../../docs/forward-pid/fixtures/pfd_input.json' with {type:'json'};
+import reference from '../../../docs/forward-pid/fixtures/expected_graph.json' with {type:'json'};
 import catalog from '../configurations/pump-transfer.json' with {type:'json'};
 import {generateFromPfd} from '../src/generate.js';
 import {validate} from '../src/engineering.js';
