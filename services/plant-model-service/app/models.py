@@ -107,6 +107,12 @@ class Junction(PlantObject):
     junction_type: JunctionType
 
 
+class PipingSegment(PlantObject):
+    """Physical pipeline segment with named process endpoints; line ID may remain unbound."""
+    category: Literal["piping_segment"] = "piping_segment"
+    line_id: str | None = None
+
+
 class Nozzle(PlantObject):
     category: Literal["nozzle"] = "nozzle"
     nozzle_type: NozzleType
@@ -114,7 +120,7 @@ class Nozzle(PlantObject):
 
 
 PlantObjectUnion = Annotated[
-    Equipment | Valve | Instrument | Junction | Nozzle,
+    Equipment | Valve | Instrument | Junction | Nozzle | PipingSegment,
     Field(discriminator="category"),
 ]
 
