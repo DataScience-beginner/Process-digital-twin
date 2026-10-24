@@ -30,10 +30,14 @@ jobs:
         run: python experiments/openpidl/benchmark.py
       - name: Run native PIDL port-aware adapter acceptance tests
         run: python -m unittest discover -s experiments/openpidl -p "test_port_adapter.py" -v
+      - name: E2.3 actual DEXPI XML round-trip audit
+        run: python experiments/openpidl/dexpi_roundtrip.py
       - name: Upload JSON findings
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: openpidl-compatibility-result
-          path: docs/forward-pid/benchmark-results/openpidl-e2-result.json
+          path: |
+            docs/forward-pid/benchmark-results/openpidl-e2-result.json
+            docs/forward-pid/benchmark-results/dexpi-roundtrip-e23.json
           if-no-files-found: warn
