@@ -1,8 +1,8 @@
 import input from '../../../docs/forward-pid/fixtures/pfd_input.json' with { type: 'json' };
-import expected from '../../../docs/forward-pid/fixtures/expected_graph.json' with { type: 'json' };
+import {generateFromPfd} from './generate.js';
 export const source = input;
-export const baseline = expected;
-export function createModel(){return structuredClone(expected);}
+export function generateProject(pfd=source){return generateFromPfd(pfd);}
+export function createModel(){const result=generateProject(); if(result.status!=='generated')throw new Error('Configuration selection failed: '+result.exceptions.join(', '));return result.graph;}
 export function validate(model){
  const issues=[], nodes=new Map();
  for(const n of model.nodes){if(nodes.has(n.id))issues.push('Duplicate node '+n.id);nodes.set(n.id,n);}
