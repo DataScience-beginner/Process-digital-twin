@@ -29,8 +29,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Validate actual rendered canvas and interactions
         run: npm run test:browser
-      - name: Publish browser test artifacts on failure
-        if: failure()
+      - name: Publish browser screenshots and test artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: maxgraph-browser-results
